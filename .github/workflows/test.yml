@@ -1,0 +1,153 @@
+name: Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Unit tests — fast, no external deps ──────────────────────────────────
+  unit:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-test.txt
+
+      - name: Run unit tests with coverage
+        run: |
+          pytest tests/unit \
+            --cov=app/services \
+            --cov=app/routes \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            -v
+        env:
+          DATABASE_URL: "postgresql+asyncpg://x:x@localhost/x"
+          STORAGE_BACKEND: "local"
+          DATA_DIR: "/tmp/wiki-test-data"
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-unit
+          path: coverage.xml
+
+  # ── Integration tests — PostgreSQL via service container ─────────────────
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: wiki
+          POSTGRES_PASSWORD: wiki
+          POSTGRES_DB: wiki_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-test.txt
+
+      - name: Run integration tests
+        run: |
+          pytest tests/integration \
+            --cov=app \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            -v
+        env:
+          DATABASE_URL: "postgresql+asyncpg://wiki:wiki@localhost:5432/wiki_test"
+          STORAGE_BACKEND: "local"
+          DATA_DIR: "/tmp/wiki-int-data"
+          AUTH_USERNAME: "admin"
+          AUTH_PASSWORD: "admin"
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-integration
+          path: coverage.xml
+
+  # ── Frontend tests — Playwright + PostgreSQL ──────────────────────────────
+  frontend:
+    name: Frontend Tests (Playwright)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: wiki
+          POSTGRES_PASSWORD: wiki
+          POSTGRES_DB: wiki_front
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-test.txt
+
+      - name: Install Playwright browsers
+        run: playwright install chromium --with-deps
+
+      - name: Run Alembic migrations
+        run: alembic upgrade head
+        env:
+          DATABASE_URL: "postgresql+asyncpg://wiki:wiki@localhost:5432/wiki_front"
+
+      - name: Run frontend tests
+        run: pytest tests/frontend -v
+        env:
+          DATABASE_URL: "postgresql+asyncpg://wiki:wiki@localhost:5432/wiki_front"
+          STORAGE_BACKEND: "local"
+          DATA_DIR: "/tmp/wiki-front-data"
+          AUTH_USERNAME: "admin"
+          AUTH_PASSWORD: "admin"

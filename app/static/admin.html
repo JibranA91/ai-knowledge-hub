@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard — AI Knowledge Hub</title>
+  <meta name="theme-color" content="#005CE7" />
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #222536;
+      --border: #2e3248;
+      --text: #e2e8f0;
+      --text-muted: #8892a4;
+      --accent: #6c63ff;
+      --accent-hover: #7c73ff;
+      --danger: #e05252;
+      --success: #4caf50;
+      --warning: #f59e0b;
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+           background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* ── Header ── */
+    .header { background: var(--surface); border-bottom: 1px solid var(--border);
+              padding: 12px 24px; display: flex; align-items: center; gap: 16px; }
+    .header h1 { font-size: 1.1rem; font-weight: 600; }
+    .header .back { color: var(--text-muted); text-decoration: none; font-size: 0.85rem;
+                    display: flex; align-items: center; gap: 4px; }
+    .header .back:hover { color: var(--text); }
+    .header .spacer { flex: 1; }
+    .header .user-info { font-size: 0.85rem; color: var(--text-muted); }
+
+    /* ── User menu (admin header) ── */
+    .adm-user-wrap { position: relative; display: flex; align-items: center; }
+    .adm-user-btn {
+      display: flex; align-items: center; gap: 7px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 20px; padding: 5px 12px 5px 8px;
+      color: var(--text); font-size: 0.82rem; cursor: pointer;
+      transition: background 0.15s;
+    }
+    .adm-user-btn:hover { background: var(--border); }
+    .adm-user-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .adm-user-dropdown {
+      display: none; position: absolute; top: calc(100% + 8px); right: 0;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; min-width: 220px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 500;
+    }
+    .adm-user-dropdown.open { display: block; }
+    .adm-umi-row { padding: 5px 16px; font-size: 0.82rem; color: var(--text-muted); }
+    .adm-umi-email { font-weight: 600; color: var(--text); font-size: 0.875rem;
+                     word-break: break-all; padding-top: 12px; }
+    .adm-umi-meta { padding-top: 2px; }
+    .adm-umi-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 4px;
+      font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+      background: rgba(108,99,255,0.2); color: var(--accent);
+    }
+    .adm-umi-divider { margin: 4px 0; border-top: 1px solid var(--border); }
+    .adm-umi-action {
+      display: flex; align-items: center; gap: 8px;
+      width: 100%; padding: 8px 16px; background: none; border: none;
+      font-size: 0.85rem; color: var(--text-muted); cursor: pointer;
+      text-align: left; transition: background 0.12s, color 0.12s;
+      text-decoration: none;
+    }
+    .adm-umi-action:hover { background: var(--bg); color: var(--text); }
+    .adm-umi-action.danger:hover { color: var(--danger); }
+    .adm-umi-action svg { width: 15px; height: 15px; flex-shrink: 0; }
+    .adm-umi-action:last-child { padding-bottom: 10px; }
+
+    /* ── Tabs ── */
+    .tabs { background: var(--surface); border-bottom: 1px solid var(--border);
+            padding: 0 24px; display: flex; gap: 2px; }
+    .tab { padding: 12px 18px; cursor: pointer; font-size: 0.9rem; color: var(--text-muted);
+           border-bottom: 2px solid transparent; transition: color 0.15s; }
+    .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+    .tab:hover:not(.active) { color: var(--text); }
+
+    /* ── Main layout ── */
+    .main { padding: 24px; max-width: 1400px; margin: 0 auto; }
+    .section { display: none; }
+    .section.active { display: block; }
+
+    /* ── Cards ── */
+    .card { background: var(--surface); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+    .card-header { display: flex; align-items: center; justify-content: space-between;
+                   margin-bottom: 16px; }
+    .card-header h2 { font-size: 1rem; font-weight: 600; }
+
+    /* ── Tables ── */
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    th { text-align: left; padding: 10px 12px; color: var(--text-muted); font-weight: 500;
+         border-bottom: 1px solid var(--border); white-space: nowrap; }
+    td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(108, 99, 255, 0.04); }
+
+    /* ── Buttons ── */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px;
+           border-radius: 6px; font-size: 0.85rem; font-weight: 500; cursor: pointer;
+           border: none; transition: background 0.15s; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--border); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { background: #c94545; }
+    .btn-sm { padding: 4px 10px; font-size: 0.8rem; }
+
+    /* ── Badges ── */
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px;
+             font-size: 0.75rem; font-weight: 500; }
+    .badge-admin { background: rgba(108, 99, 255, 0.2); color: var(--accent); }
+    .badge-supervisor { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+    .badge-member { background: rgba(255,255,255,0.08); color: var(--text-muted); }
+    .badge-suspended { background: rgba(224,82,82,0.2); color: var(--danger); }
+    .badge-template { background: rgba(76, 175, 80, 0.15); color: var(--success); }
+    .badge-builtin { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+
+    /* ── Users tab: identity rows + membership chips ── */
+    .org-chip { display: inline-block; padding: 3px 9px; margin: 2px 4px 2px 0;
+                border-radius: 12px; font-size: 0.78rem;
+                background: rgba(255,255,255,0.06); border: 1px solid var(--border); }
+    .users-table .caret { color: var(--text-muted); font-size: 0.85rem; user-select: none; }
+    .user-row:hover { background: rgba(255,255,255,0.03); }
+    .user-detail-box { padding: 10px 4px 14px; }
+    .sub-table th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em;
+                    color: var(--text-muted); font-weight: 600; text-align: left; padding: 4px 8px; }
+    .sub-table td { padding: 5px 8px; border-top: 1px solid var(--border); font-size: 0.85rem; }
+
+    /* ── Forms / Modals ── */
+    .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+                      z-index: 1000; align-items: center; justify-content: center; }
+    .modal-backdrop.open { display: flex; }
+    .modal { background: var(--surface); border: 1px solid var(--border);
+             border-radius: var(--radius); padding: 24px; min-width: 500px;
+             max-width: 720px; width: 90vw; max-height: 88vh; overflow-y: auto; }
+    .modal h3 { font-size: 1.05rem; margin-bottom: 20px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .form-grid.full { grid-template-columns: 1fr; }
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field.span2 { grid-column: span 2; }
+    label { font-size: 0.8rem; color: var(--text-muted); font-weight: 500; }
+    input[type="text"], input[type="email"], input[type="password"], input[type="number"],
+    select, textarea {
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+      color: var(--text); padding: 8px 10px; font-size: 0.875rem; width: 100%;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none; border-color: var(--accent);
+    }
+    .checkbox-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+    .checkbox-row input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+    .checkbox-row label { font-size: 0.875rem; color: var(--text); cursor: pointer; margin: 0; }
+
+    .section-label { font-size: 0.75rem; font-weight: 600; color: var(--text-muted);
+                     text-transform: uppercase; letter-spacing: 0.05em;
+                     margin: 16px 0 8px; grid-column: span 2; }
+
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+    /* ── Reset Password Modal ── */
+    .rp-header { display: flex; align-items: center; gap: 14px; padding-bottom: 16px;
+                 border-bottom: 1px solid var(--border); }
+    .rp-icon { width: 40px; height: 40px; border-radius: 10px; background: var(--accent);
+               display: flex; align-items: center; justify-content: center; color: #fff;
+               flex-shrink: 0; }
+    .rp-subtitle { font-size: 0.8rem; color: var(--text-muted); margin: 0; }
+    .pw-input-wrap { position: relative; display: flex; }
+    .pw-input-wrap input { flex: 1; padding-right: 38px; }
+    .pw-toggle { position: absolute; right: 0; top: 0; height: 100%; width: 36px;
+                 background: none; border: none; cursor: pointer; display: flex;
+                 align-items: center; justify-content: center;
+                 color: var(--text-muted); border-radius: 0 6px 6px 0; }
+    .pw-toggle:hover { color: var(--text); }
+    .pw-strength-bar { height: 3px; border-radius: 2px; background: var(--border);
+                       margin-top: 7px; overflow: hidden; }
+    #rp-strength-fill { height: 100%; width: 0; border-radius: 2px;
+                        transition: width 0.25s, background 0.25s; }
+    .pw-strength-label { font-size: 0.72rem; font-weight: 500; margin-top: 4px;
+                         display: block; min-height: 1em; }
+    .pw-match-label { font-size: 0.72rem; font-weight: 500; margin-top: 4px;
+                      display: block; min-height: 1em; }
+
+    /* ── Misc ── */
+    .empty { color: var(--text-muted); text-align: center; padding: 40px; font-size: 0.9rem; }
+    .loading { color: var(--text-muted); padding: 20px; text-align: center; }
+    .toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface2);
+             border: 1px solid var(--border); border-radius: 8px; padding: 12px 18px;
+             font-size: 0.875rem; z-index: 9999; display: none; }
+    .toast.show { display: block; }
+    .toast.success { border-color: var(--success); color: var(--success); }
+    .toast.error { border-color: var(--danger); color: var(--danger); }
+
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;
+                 margin-bottom: 20px; }
+    .stat-card { background: var(--surface2); border: 1px solid var(--border);
+                 border-radius: var(--radius); padding: 16px; }
+    .stat-card .val { font-size: 1.6rem; font-weight: 700; margin-bottom: 4px; }
+    .stat-card .lbl { font-size: 0.78rem; color: var(--text-muted); }
+
+    .search-bar { display: flex; gap: 10px; margin-bottom: 16px; }
+    .search-bar input { flex: 1; }
+
+    .usage-filters { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end;
+                     padding: 12px 0 16px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+    .usage-filter-group { display: flex; flex-direction: column; gap: 4px; }
+    .usage-filter-group label { font-size: 0.75rem; color: var(--text-muted); font-weight: 500; }
+    .usage-filter-group select, .usage-filter-group input { width: auto; min-width: 110px; }
+
+    .perm-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
+    @media (max-width: 640px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .perm-grid { grid-template-columns: 1fr; }
+      .modal { min-width: unset; }
+    }
+
+    /* ── Schema Editor ── */
+    .main.schema-active { max-width: 100%; width: 100%; padding: 12px 12px 12px 12px; flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    body.schema-mode { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+    .main.schema-active #sec-schema { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+    .main.schema-active #sec-schema .card { display: flex; flex-direction: column; flex: 1; min-height: 0; margin-bottom: 0; padding: 12px 12px 0 12px; }
+    .main.schema-active #sec-schema .schema-layout { flex: 1; height: auto; min-height: 0; }
+    .main.schema-active #sec-schema .schema-footer { flex-shrink: 0; padding-bottom: 12px; }
+    .schema-layout { display: flex; gap: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; height: 58vh; min-height: 380px; user-select: none; }
+    .schema-editor-pane { display: flex; flex-direction: column; flex: 1 1 55%; min-width: 220px; overflow: hidden; }
+    .schema-divider { width: 5px; cursor: col-resize; background: var(--border); flex-shrink: 0; transition: background 0.15s; }
+    .schema-divider:hover, .schema-divider.dragging { background: var(--accent); }
+    .schema-right-pane { display: flex; flex-direction: column; flex: 1 1 45%; min-width: 200px; overflow: hidden; border-left: 1px solid var(--border); }
+    .schema-pane-header { display: flex; align-items: center; justify-content: space-between; padding: 7px 12px; border-bottom: 1px solid var(--border); background: var(--surface2); font-size: 0.78rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; flex-shrink: 0; gap: 8px; }
+    .schema-editor-textarea { flex: 1; width: 100%; background: var(--surface); color: var(--text); font-family: "JetBrains Mono", "Fira Code", Consolas, monospace; font-size: 0.82rem; line-height: 1.55; padding: 14px 16px; resize: none; border: none; outline: none; user-select: text; }
+    .schema-rtabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); background: var(--surface2); flex-shrink: 0; }
+    .schema-rtab { padding: 8px 14px; font-size: 0.8rem; cursor: pointer; color: var(--text-muted); border-bottom: 2px solid transparent; transition: color 0.12s; }
+    .schema-rtab.active { color: var(--text); border-bottom-color: var(--accent); }
+    .schema-rtab:hover:not(.active) { color: var(--text); }
+    .schema-lpanel { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+    .schema-lpanel.active { display: flex; }
+    .schema-diff-body { flex: 1; overflow-y: auto; padding: 10px 0; font-family: "JetBrains Mono", Consolas, monospace; font-size: 0.78rem; line-height: 1.5; }
+    .schema-diff-hint { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; height: 100%; color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 24px; font-family: -apple-system, sans-serif; }
+    .schema-preview-body { flex: 1; padding: 20px 24px; overflow-y: auto; font-size: 0.875rem; line-height: 1.7; color: var(--text); }
+    .schema-preview-body h1,.schema-preview-body h2,.schema-preview-body h3 { margin: 1.2em 0 0.4em; font-weight: 600; }
+    .schema-preview-body h1 { font-size: 1.25rem; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+    .schema-preview-body h2 { font-size: 1.05rem; }
+    .schema-preview-body h3 { font-size: 0.95rem; }
+    .schema-preview-body p { margin: 0.5em 0; }
+    .schema-preview-body ul,.schema-preview-body ol { padding-left: 1.4em; margin: 0.4em 0; }
+    .schema-preview-body li { margin: 0.2em 0; }
+    .schema-preview-body code { background: var(--surface2); border-radius: 3px; padding: 1px 5px; font-family: "JetBrains Mono",Consolas,monospace; font-size: 0.82em; }
+    .schema-preview-body pre { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; overflow-x: auto; margin: 0.8em 0; }
+    .schema-preview-body pre code { background: none; padding: 0; }
+    .schema-preview-body table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 0.8em 0; }
+    .schema-preview-body th,.schema-preview-body td { border: 1px solid var(--border); padding: 7px 10px; }
+    .schema-preview-body th { background: var(--surface2); font-weight: 600; }
+    .schema-preview-body blockquote { border-left: 3px solid var(--accent); margin: 0.6em 0; padding: 6px 14px; color: var(--text-muted); }
+    .diff-line { padding: 1px 16px; white-space: pre-wrap; word-break: break-all; }
+    .diff-line.added   { background: rgba(76,175,80,0.12); color: #81c784; }
+    .diff-line.removed { background: rgba(224,82,82,0.12); color: #e57373; }
+    .diff-line.context { color: var(--text-muted); }
+    .diff-line.hunk    { color: var(--accent); background: rgba(108,99,255,0.08); padding: 3px 16px; font-style: italic; }
+    .schema-footer { display: flex; align-items: center; justify-content: space-between; padding: 12px 0 0; flex-wrap: wrap; gap: 8px; }
+    .schema-val-summary { display: flex; gap: 6px; flex-wrap: wrap; }
+    .schema-val-badge { display: inline-block; padding: 2px 9px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+    .schema-val-badge.error   { background: rgba(224,82,82,0.2); color: var(--danger); }
+    .schema-val-badge.warning { background: rgba(245,158,11,0.2); color: var(--warning); }
+    .schema-val-badge.ok      { background: rgba(76,175,80,0.2); color: var(--success); }
+    .schema-val-block { padding: 10px 16px; border-top: 1px solid var(--border); }
+    .schema-val-heading { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin: 8px 0 4px; font-family: -apple-system, sans-serif; }
+    .schema-val-heading.error   { color: var(--danger); }
+    .schema-val-heading.warning { color: var(--warning); }
+    .schema-val-item { font-size: 0.8rem; color: var(--text-muted); padding: 2px 0; line-height: 1.5; font-family: -apple-system, sans-serif; }
+    .schema-org-select { font-size: 0.8rem; padding: 3px 7px; background: var(--surface); border: 1px solid var(--border); border-radius: 5px; color: var(--text); }
+    /* Schema acceptance rules — (i) button on the heading + modal rule list */
+    .schema-info-btn { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-left: 8px; padding: 0; border: 1px solid var(--border); border-radius: 50%; background: var(--surface2); color: var(--text-muted); font-size: 0.7rem; font-weight: 700; font-style: italic; font-family: Georgia, "Times New Roman", serif; line-height: 1; cursor: pointer; vertical-align: middle; }
+    .schema-info-btn:hover { color: var(--accent); border-color: var(--accent); }
+    #schema-rules-list .schema-rules-h { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin: 16px 0 6px; }
+    #schema-rules-list .schema-rules-h:first-child { margin-top: 0; }
+    #schema-rules-list .schema-rules-h.req { color: var(--danger); }
+    #schema-rules-list .schema-rules-h.warn { color: var(--warning); }
+    #schema-rules-list ul { margin: 0; padding-left: 18px; }
+    #schema-rules-list li { font-size: 0.84rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 6px; }
+    #schema-rules-list code { background: var(--surface2); border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; font-size: 0.8rem; color: var(--text); white-space: nowrap; }
+  </style>
+</head>
+<body>
+<div class="header">
+  <a href="/" class="back">
+    <svg viewBox="0 0 16 16" fill="none" style="width:14px;height:14px"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Wiki
+  </a>
+  <h1 id="hdr-title">Admin Dashboard</h1>
+  <div class="spacer"></div>
+  <select id="adm-org-switcher" class="schema-org-select" style="display:none;margin-right:12px"
+          title="Active organization"></select>
+  <div class="adm-user-wrap">
+    <button class="adm-user-btn" id="adm-user-btn" title="Account">
+      <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="10" cy="7" r="3.5" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M2.5 17c0-3.314 3.358-6 7.5-6s7.5 2.686 7.5 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <span id="adm-user-label">Account</span>
+    </button>
+    <div class="adm-user-dropdown" id="adm-user-dropdown">
+      <div class="adm-umi-row adm-umi-email" id="adm-umi-email">—</div>
+      <div class="adm-umi-row adm-umi-meta">
+        <span class="adm-umi-badge" id="adm-umi-role">—</span>
+      </div>
+      <div class="adm-umi-divider"></div>
+      <a href="/" class="adm-umi-action">
+        <svg viewBox="0 0 16 16" fill="none"><path d="M6 8H2m0 0l3-3M2 8l3 3M14 4v8a2 2 0 0 1-2 2H8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Back to Wiki
+      </a>
+      <button class="adm-umi-action danger" id="adm-btn-signout">
+        <svg viewBox="0 0 16 16" fill="none"><path d="M6 3H3v10h3M10 5l3 3-3 3M13 8H6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Sign out
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="users">Users</div>
+  <div class="tab" data-tab="orgs">Organizations</div>
+  <div class="tab" data-tab="templates">Permission Templates</div>
+  <div class="tab" data-tab="workspaces">Workspaces</div>
+  <div class="tab" data-tab="usage">Usage</div>
+  <div class="tab" data-tab="org-limits">Org Limits</div>
+  <div class="tab" data-tab="audit">Audit Log</div>
+  <div class="tab" data-tab="history">History</div>
+  <div class="tab" data-tab="jobs">Jobs</div>
+  <div class="tab" data-tab="schema">Wiki Schema</div>
+</div>
+
+<div class="main">
+
+  <!-- ── USERS ── -->
+  <div class="section active" id="sec-users">
+    <div class="card">
+      <div class="card-header">
+        <h2>Users</h2>
+        <button class="btn btn-primary btn-sm" onclick="openCreateUser()">+ Add User</button>
+      </div>
+      <div id="users-table"><div class="loading">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- ── ORGANIZATIONS ── -->
+  <div class="section" id="sec-orgs">
+    <div class="card">
+      <div class="card-header">
+        <h2>Organizations</h2>
+        <button class="btn btn-primary btn-sm" onclick="openCreateOrg()">+ New Organization</button>
+      </div>
+      <div id="orgs-table"><div class="loading">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- ── PERMISSION TEMPLATES ── -->
+  <div class="section" id="sec-templates">
+    <div class="card">
+      <div class="card-header">
+        <h2>Permission Templates</h2>
+        <button class="btn btn-primary btn-sm" onclick="openCreateTemplate()">+ New Template</button>
+      </div>
+      <div id="templates-table"><div class="loading">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- ── WORKSPACES ── -->
+  <div class="section" id="sec-workspaces">
+    <div class="card">
+      <div class="card-header">
+        <h2>Workspaces</h2>
+        <button class="btn btn-primary btn-sm" onclick="openCreateWorkspace()">+ New Workspace</button>
+      </div>
+      <div id="workspaces-table"><div class="loading">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- ── USAGE ── -->
+  <div class="section" id="sec-usage">
+    <div class="card">
+      <div class="card-header">
+        <h2>Token & Upload Usage</h2>
+        <button class="btn btn-secondary btn-sm" id="usage-refresh-btn" onclick="loadUsage()">↺ Refresh</button>
+      </div>
+      <div class="usage-filters">
+        <div class="usage-filter-group">
+          <label>Period</label>
+          <select id="usage-days" onchange="loadUsage()" style="width:90px">
+            <option value="7">7 days</option>
+            <option value="30" selected>30 days</option>
+            <option value="90">90 days</option>
+          </select>
+        </div>
+        <div class="usage-filter-group">
+          <label>Group by</label>
+          <select id="usage-groupby" onchange="renderUsage()">
+            <option value="detail" selected>Full detail</option>
+            <option value="user">User only</option>
+            <option value="user+op">User + Operation</option>
+            <option value="user+model">User + Model</option>
+          </select>
+        </div>
+        <div class="usage-filter-group">
+          <label>User</label>
+          <input id="usage-filter-user" type="text" placeholder="Filter email…" oninput="renderUsage()" style="width:160px">
+        </div>
+        <div class="usage-filter-group">
+          <label>Operation</label>
+          <select id="usage-filter-op" onchange="renderUsage()">
+            <option value="">All operations</option>
+          </select>
+        </div>
+        <div class="usage-filter-group">
+          <label>Model</label>
+          <select id="usage-filter-model" onchange="renderUsage()">
+            <option value="">All models</option>
+          </select>
+        </div>
+      </div>
+      <div id="usage-stats"><div class="loading">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- ── ORG LIMITS ── -->
+  <div class="section" id="sec-org-limits">
+    <div class="card">
+      <div class="card-header"><h2>Organization Limits</h2></div>
+      <div id="org-limits-form"><div class="loading">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- ── AUDIT LOG ── -->
+  <div class="section" id="sec-audit">
+    <div class="card">
+      <div class="card-header">
+        <h2>Audit Log</h2>
+        <p style="font-size:0.8rem;color:var(--text-muted);margin-top:3px">Every recorded operation across the wiki. Click any row to see full details.</p>
+      </div>
+      <div class="search-bar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <input type="text" id="audit-search" placeholder="Search operations or text…" style="min-width:200px">
+        <select id="audit-operation-filter" onchange="_auditPage=1;loadAudit()">
+          <option value="">All operations</option>
+        </select>
+        <select id="audit-org-filter" style="display:none" onchange="_onAuditOrgChange()">
+          <option value="">All organizations</option>
+        </select>
+        <button id="audit-sort-btn" class="btn btn-secondary btn-sm" onclick="_toggleAuditSort()" title="Toggle sort direction">
+          <span id="audit-sort-icon">↓</span> Newest first
+        </button>
+      </div>
+      <div id="audit-table"><div class="loading">Loading…</div></div>
+      <div id="audit-pager" style="display:flex;gap:10px;justify-content:center;margin-top:16px"></div>
+    </div>
+  </div>
+
+  <!-- ── HISTORY (CHANGE TRACKING + REVERT) ── -->
+  <div class="section" id="sec-history">
+    <div class="card">
+      <div class="card-header">
+        <h2>Change History</h2>
+        <p style="font-size:0.8rem;color:var(--text-muted);margin-top:3px">Every wiki-state mutation is tracked. Revert an action to undo it plus every action that followed.</p>
+      </div>
+      <div class="search-bar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <select id="history-org-filter" style="display:none" onchange="_onHistoryOrgChange()">
+          <option value="">Select organization…</option>
+        </select>
+        <select id="history-type-filter" onchange="_historyPage=1;loadHistory()">
+          <option value="">All action types</option>
+          <option value="manual_edit">Manual edit</option>
+          <option value="manual_delete">Manual delete</option>
+          <option value="document_upload">Document upload</option>
+          <option value="document_delete">Document delete</option>
+          <option value="upload_ingest">Upload + ingest</option>
+          <option value="saved_query">Saved Q&amp;A</option>
+          <option value="recalibrate">Recalibration</option>
+          <option value="targeted_recalibrate">Targeted recalibration</option>
+          <option value="schema_update">Schema update</option>
+          <option value="revert">Revert</option>
+        </select>
+      </div>
+      <div id="history-table"><div class="loading">Loading…</div></div>
+      <div id="history-pager" style="display:flex;gap:10px;justify-content:center;margin-top:16px"></div>
+    </div>
+  </div>
+
+  <!-- ── JOBS (ACTIVE BACKGROUND WORK) ── -->
+  <div class="section" id="sec-jobs">
+    <div class="card">
+      <div class="card-header">
+        <h2>Active Jobs</h2>
+        <p style="font-size:0.8rem;color:var(--text-muted);margin-top:3px">All in-flight background work — ingests, recalibrations and reverts. Refreshes automatically while this tab is open.</p>
+      </div>
+      <div class="search-bar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <select id="jobs-org-filter" style="display:none" onchange="_onJobsOrgChange()">
+          <option value="">Select organization…</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" onclick="loadJobs()">↺ Refresh</button>
+      </div>
+      <div id="jobs-table"><div class="loading">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- ── WIKI SCHEMA ── -->
+  <div class="section" id="sec-schema">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h2>Wiki Schema — AGENTS.md<button class="schema-info-btn" id="btn-schema-rules" title="What must an AGENTS.md contain to be accepted?" aria-label="Schema acceptance rules">i</button></h2>
+          <p style="font-size:0.8rem;color:var(--text-muted);margin-top:3px">Controls how the AI structures and formats all wiki pages. Changes take effect on the next ingest and are logged to the audit log.</p>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <!-- Admin org dropdown — shown/hidden by JS -->
+          <select id="schema-org-select" class="schema-org-select" style="display:none" title="View schema for organization"></select>
+          <button class="btn btn-secondary btn-sm" id="btn-schema-revert" title="Load the factory default AGENTS.md into the editor">
+            <svg viewBox="0 0 16 16" fill="none" width="13" height="13"><path d="M2.5 8A5.5 5.5 0 1 0 8 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M2.5 4.5v4h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Revert to Default
+          </button>
+          <button class="btn btn-secondary btn-sm" id="btn-schema-preview">
+            <svg viewBox="0 0 16 16" fill="none" width="13" height="13"><path d="M2 4h5M2 8h5M2 12h5M9 4h5M9 8h5M9 12h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            Preview &amp; Validate
+          </button>
+          <button class="btn btn-primary btn-sm" id="btn-schema-save" disabled>
+            <svg viewBox="0 0 16 16" fill="none" width="13" height="13"><path d="M3 8l3.5 3.5L13 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Save Schema
+          </button>
+        </div>
+      </div>
+      <div class="schema-layout" id="schema-layout">
+        <!-- Left: editor + preview tabs -->
+        <div class="schema-editor-pane" id="schema-editor-pane">
+          <div class="schema-rtabs">
+            <div class="schema-rtab active" data-ltab="edit">Editor</div>
+            <div class="schema-rtab" data-ltab="preview">Preview</div>
+            <span id="schema-org-label" style="font-size:0.75rem;color:var(--accent);display:none;margin-left:auto;padding:8px 12px"></span>
+          </div>
+          <div class="schema-lpanel active" id="lpanel-edit">
+            <textarea id="schema-editor" class="schema-editor-textarea" spellcheck="false" placeholder="Loading schema…"></textarea>
+          </div>
+          <div class="schema-lpanel" id="lpanel-preview">
+            <div id="schema-preview-body" class="schema-preview-body">
+              <p style="color:var(--text-muted);font-size:0.85rem">Switch to this tab while editing to see a live markdown render of the schema.</p>
+            </div>
+          </div>
+        </div>
+        <!-- Draggable divider -->
+        <div class="schema-divider" id="schema-divider"></div>
+        <!-- Right: changes & validation -->
+        <div class="schema-right-pane" id="schema-right-pane">
+          <div class="schema-pane-header">
+            <span>Changes &amp; Validation</span>
+          </div>
+          <div id="schema-diff-body" class="schema-diff-body">
+            <div class="schema-diff-hint">
+              <svg viewBox="0 0 16 16" fill="none" width="18" height="18"><path d="M2 4h5M2 8h5M2 12h5M9 4h5M9 8h5M9 12h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              Click <strong>Preview &amp; Validate</strong> to see a diff of your edits and run validation checks before saving.
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="schema-footer">
+        <div class="schema-val-summary" id="schema-val-summary"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modals ── -->
+
+<!-- Edit User Modal -->
+<div class="modal-backdrop" id="modal-edit-user">
+  <div class="modal">
+    <h3 id="edit-user-title">Edit User</h3>
+    <div class="form-grid">
+      <div class="field"><label>Email</label><input id="eu-email" type="email" disabled></div>
+      <div class="field"><label>Role</label>
+        <select id="eu-role" onchange="onEditUserRoleChange(this.value)"><option value="member">Member</option><option value="supervisor">Supervisor</option><option value="admin">Admin</option></select>
+      </div>
+      <div class="field"><label>Organization</label>
+        <select id="eu-org"><option value="">— Current —</option></select>
+      </div>
+      <div class="field"><label>Permission Template</label>
+        <select id="eu-template"><option value="">— None (read-only) —</option></select>
+      </div>
+      <div class="field"><label>Workspace</label>
+        <select id="eu-workspace"><option value="">— Default —</option></select>
+      </div>
+      <div class="field">
+        <label>Token limit / day (millions, blank = template default)</label>
+        <input id="eu-max_tokens" type="number" min="0" step="0.1" placeholder="unlimited" title="In millions of tokens.">
+      </div>
+      <div class="field">
+        <label>Chat message limit / day (blank = template default)</label>
+        <input id="eu-max_msgs" type="number" min="1" placeholder="unlimited">
+      </div>
+      <div class="field span2">
+        <div class="checkbox-row">
+          <input type="checkbox" id="eu-suspended">
+          <label for="eu-suspended">Suspend account</label>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-edit-user')">Cancel</button>
+      <button class="btn btn-danger btn-sm" onclick="resetPassword()" style="margin-right:auto">Reset Password</button>
+      <button class="btn btn-primary" onclick="saveEditUser()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create User Modal -->
+<div class="modal-backdrop" id="modal-create-user">
+  <div class="modal">
+    <h3>Add User</h3>
+    <div class="form-grid">
+      <div class="field span2"><label>Email</label><input id="cu-email" type="email" placeholder="user@example.com"></div>
+      <div class="field span2"><label>Password</label><input id="cu-password" type="password" placeholder="min 8 chars"></div>
+      <div class="field span2">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input id="cu-is-admin" type="checkbox" style="width:auto" onchange="onCreateUserAdminChange(this.checked)">
+          Admin (full platform access)
+        </label>
+      </div>
+      <p class="field span2" id="cu-admin-note" style="display:none;font-size:0.8rem;color:var(--text-muted)">
+        Admins are not tied to any organization and have full global access across all orgs.
+      </p>
+      <p class="field span2" id="cu-member-note" style="font-size:0.8rem;color:var(--text-muted)">
+        Creates a user with no organization access yet. Grant access from the
+        <b>Organizations</b> tab → <b>Manage members</b>, where you set their role and template per org.
+      </p>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-create-user')">Cancel</button>
+      <button class="btn btn-primary" onclick="createUser()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reset Password Modal -->
+<div class="modal-backdrop" id="modal-reset-pw">
+  <div class="modal" style="min-width:400px;max-width:480px">
+    <div class="rp-header">
+      <div class="rp-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </div>
+      <div>
+        <h3 style="margin:0 0 2px">Reset Password</h3>
+        <p class="rp-subtitle" id="rp-user-label">for user</p>
+      </div>
+    </div>
+
+    <div class="form-grid full" style="gap:16px;margin-top:20px">
+      <div class="field">
+        <label>New Password</label>
+        <div class="pw-input-wrap">
+          <input id="rp-password" type="password" placeholder="Minimum 8 characters" oninput="updatePwStrength()">
+          <button type="button" class="pw-toggle" onclick="togglePwVisibility('rp-password', this)" aria-label="Show password">
+            <svg class="eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+        <div class="pw-strength-bar" id="rp-strength-bar">
+          <div id="rp-strength-fill"></div>
+        </div>
+        <span class="pw-strength-label" id="rp-strength-label"></span>
+      </div>
+      <div class="field">
+        <label>Confirm Password</label>
+        <div class="pw-input-wrap">
+          <input id="rp-confirm" type="password" placeholder="Re-enter new password" oninput="checkPwMatch()">
+          <button type="button" class="pw-toggle" onclick="togglePwVisibility('rp-confirm', this)" aria-label="Show password">
+            <svg class="eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+        <span class="pw-match-label" id="rp-match-label"></span>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-reset-pw')">Cancel</button>
+      <button class="btn btn-primary" id="rp-submit-btn" onclick="doResetPassword()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        Reset Password
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Template Edit/Create Modal -->
+<div class="modal-backdrop" id="modal-template">
+  <div class="modal">
+    <h3 id="tpl-modal-title">Create Template</h3>
+    <input type="hidden" id="tpl-id">
+    <div class="form-grid">
+      <div class="field span2"><label>Name</label><input id="tpl-name" type="text" placeholder="e.g. reviewer"></div>
+      <div class="field span2"><label>Description</label><input id="tpl-desc" type="text" placeholder="Brief description"></div>
+
+      <div class="section-label">File Operations</div>
+      <div class="perm-grid" style="grid-column:span 2">
+        <div class="checkbox-row"><input type="checkbox" id="tpl-can_upload"><label for="tpl-can_upload">Can upload documents</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="tpl-can_upload_writer_draft"><label for="tpl-can_upload_writer_draft">Can save &amp; ingest writer drafts</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="tpl-can_delete_files"><label for="tpl-can_delete_files">Can delete uploaded files</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="tpl-can_download_files" checked><label for="tpl-can_download_files">Can download source files</label></div>
+      </div>
+      <div class="field"><label>Max upload size (MB, blank=global)</label><input id="tpl-max_upload_size_mb" type="number" min="1" placeholder="blank = global limit"></div>
+      <div class="field"><label>Max uploads / day</label><input id="tpl-max_uploads_per_day" type="number" min="1" placeholder="blank = unlimited"></div>
+      <div class="field"><label>Max uploads / week</label><input id="tpl-max_uploads_per_week" type="number" min="1" placeholder="blank = unlimited"></div>
+
+      <div class="section-label">Wiki Operations</div>
+      <div class="perm-grid" style="grid-column:span 2">
+        <div class="checkbox-row"><input type="checkbox" id="tpl-can_view_wiki" checked><label for="tpl-can_view_wiki">Can view wiki</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="tpl-can_edit_wiki"><label for="tpl-can_edit_wiki">Can edit wiki pages</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="tpl-can_delete_wiki_pages"><label for="tpl-can_delete_wiki_pages">Can delete wiki pages</label></div>
+      </div>
+
+      <div class="section-label">LLM Operations</div>
+      <div class="perm-grid" style="grid-column:span 2">
+        <div class="checkbox-row"><input type="checkbox" id="tpl-can_query"><label for="tpl-can_query">Can run queries</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="tpl-can_chat"><label for="tpl-can_chat">Can use chat</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="tpl-can_use_writer"><label for="tpl-can_use_writer">Can use AI writer</label></div>
+      </div>
+      <div class="field"><label>Max queries / day</label><input id="tpl-max_queries_per_day" type="number" min="1" placeholder="blank = unlimited"></div>
+      <div class="field"><label>Max chat messages / day</label><input id="tpl-max_chat_messages_per_day" type="number" min="1" placeholder="blank = unlimited"></div>
+
+      <div class="section-label">Token Budget</div>
+      <div class="field"><label>Max tokens / day (millions)</label><input id="tpl-max_tokens_per_day" type="number" min="0" step="0.1" placeholder="blank = unlimited" title="In millions of tokens. 1 = 1,000,000; 1.5 = 1,500,000."></div>
+      <div class="field"><label>Max tokens / week (millions)</label><input id="tpl-max_tokens_per_week" type="number" min="0" step="0.1" placeholder="blank = unlimited" title="In millions of tokens."></div>
+
+      <div class="section-label">Platform Operations</div>
+      <div class="perm-grid" style="grid-column:span 2">
+        <div class="checkbox-row"><input type="checkbox" id="tpl-can_recalibrate"><label for="tpl-can_recalibrate">Can run recalibration</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="tpl-can_run_lint"><label for="tpl-can_run_lint">Can run health check / lint</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="tpl-can_manage_schema"><label for="tpl-can_manage_schema">Can manage AGENTS.md schema</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="tpl-can_view_audit_log"><label for="tpl-can_view_audit_log">Can view audit log</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="tpl-can_view_graph" checked><label for="tpl-can_view_graph">Can view knowledge graph</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="tpl-can_rebuild_graph"><label for="tpl-can_rebuild_graph">Can rebuild graph</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="tpl-can_manage_workspace"><label for="tpl-can_manage_workspace">Can manage workspaces</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="tpl-can_approve_ingest"><label for="tpl-can_approve_ingest">Can approve ingest plans</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="tpl-can_cancel_ingest"><label for="tpl-can_cancel_ingest">Can cancel ingests</label></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-template')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTemplate()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create Workspace Modal -->
+<div class="modal-backdrop" id="modal-workspace">
+  <div class="modal" style="min-width:380px">
+    <h3 id="ws-modal-title">New Workspace</h3>
+    <div class="form-grid full">
+      <div class="field"><label>Workspace Name</label><input id="ws-name" type="text" placeholder="my-workspace"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-workspace')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveWorkspace()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create Organization Modal -->
+<div class="modal-backdrop" id="modal-create-org">
+  <div class="modal">
+    <h3>New Organization</h3>
+    <div class="form-grid">
+      <div class="field span2"><label>Organization Name</label><input id="co-name" type="text" placeholder="e.g. Marketing Team"></div>
+      <div class="field span2">
+        <label>Supervisor Email <span style="color:var(--text-muted);font-weight:400">(optional)</span></label>
+        <input id="co-supervisor-email" type="email" placeholder="Leave blank to assign later">
+      </div>
+      <div class="field span2">
+        <label>Populate from export <span style="color:var(--text-muted);font-weight:400">(optional)</span></label>
+        <input id="co-import-file" type="file" accept=".zip,application/zip">
+        <p style="font-size:0.78rem;color:var(--text-muted);margin-top:4px">Upload a previously exported wiki (.zip) to populate the new organization. Its AGENTS.md, if present, becomes the org's schema.</p>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-create-org')">Cancel</button>
+      <button class="btn btn-primary" onclick="createOrg()">Create Organization</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reusable in-app dialog (confirm / prompt) -->
+<div class="modal-backdrop" id="modal-dialog">
+  <div class="modal" style="min-width:420px;max-width:520px">
+    <h3 id="dlg-title">Confirm</h3>
+    <p id="dlg-message" style="color:var(--text-muted);font-size:0.9rem;white-space:pre-line;margin-bottom:16px"></p>
+    <div class="field span2" id="dlg-input-wrap" style="display:none">
+      <label id="dlg-input-label"></label>
+      <input id="dlg-input" type="text">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="dlg-cancel">Cancel</button>
+      <button class="btn btn-primary" id="dlg-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manage Organization Members Modal -->
+<div class="modal-backdrop" id="modal-org-members">
+  <div class="modal" style="min-width:560px;max-width:720px">
+    <h3>Members — <span id="om-org-name"></span></h3>
+    <div id="om-list" style="margin:12px 0"><div class="loading">Loading…</div></div>
+    <div style="border-top:1px solid var(--border);padding-top:14px">
+      <p style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted);margin-bottom:8px">Add a member</p>
+      <div class="form-grid">
+        <div class="field span2"><label>User</label>
+          <select id="om-user-select"></select>
+        </div>
+        <div class="field"><label>Role</label>
+          <select id="om-role" onchange="onOrgMemberRoleChange(this.value)"><option value="member">Member</option><option value="supervisor">Supervisor</option></select>
+        </div>
+        <div class="field"><label>Permission Template</label>
+          <select id="om-template"><option value="">— None —</option></select>
+          <span id="om-supervisor-note" style="display:none;font-size:0.78rem;color:var(--text-muted);margin-top:3px">
+            Supervisors have full org access — no template needed.
+          </span>
+        </div>
+      </div>
+      <p style="font-size:0.78rem;color:var(--text-muted);margin-top:6px">
+        Only existing users appear here. Create new users from the <b>Users</b> tab first.
+      </p>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-org-members')">Close</button>
+      <button class="btn btn-primary" onclick="addOrgMember()">Add Member</button>
+    </div>
+  </div>
+</div>
+
+<!-- Revert Schema Confirm Modal -->
+<div class="modal-backdrop" id="modal-schema-revert">
+  <div class="modal" style="max-width:460px">
+    <h3>Revert to Default Schema?</h3>
+    <p style="color:var(--text-muted);font-size:0.875rem;margin-bottom:8px">This will load the factory default AGENTS.md into the editor. Your current edits will be replaced.</p>
+    <p style="color:var(--warning);font-size:0.82rem">Your custom schema will be lost when you save. This takes effect immediately on the next ingest.</p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-schema-revert')">Cancel</button>
+      <button class="btn btn-danger" id="btn-schema-revert-confirm">Revert to Default</button>
+    </div>
+  </div>
+</div>
+
+<!-- Schema acceptance rules -->
+<div class="modal-backdrop" id="modal-schema-rules">
+  <div class="modal" style="max-width:640px">
+    <h3>Rules for a valid AGENTS.md</h3>
+    <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:14px">Run <strong>Preview &amp; Validate</strong> to check these automatically — the <strong>Save Schema</strong> button stays disabled until validation passes with no errors. <em>Warnings</em> don't block saving, but are flagged for review.</p>
+    <div id="schema-rules-list">
+      <p style="color:var(--text-muted);font-size:0.85rem">Loading rules…</p>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-schema-rules')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Audit log entry details -->
+<div class="modal-backdrop" id="modal-audit-details">
+  <div class="modal" style="max-width:720px">
+    <h3 id="audit-details-op" style="font-family:'JetBrains Mono',Consolas,monospace;font-size:1rem;margin-bottom:4px"></h3>
+    <p id="audit-details-meta" style="color:var(--text-muted);font-size:0.82rem;margin-bottom:14px"></p>
+    <div style="margin-bottom:12px">
+      <p style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted);margin-bottom:4px">Message</p>
+      <div id="audit-details-text" style="font-size:0.88rem;line-height:1.5;padding:10px;background:var(--surface2);border-radius:6px;white-space:pre-wrap;word-break:break-word"></div>
+    </div>
+    <div>
+      <p style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted);margin-bottom:4px">Structured details</p>
+      <pre id="audit-details-json" style="font-size:0.78rem;line-height:1.45;padding:10px;background:var(--surface2);border-radius:6px;max-height:40vh;overflow:auto;margin:0"></pre>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-audit-details')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- History action details -->
+<div class="modal-backdrop" id="modal-history-details">
+  <div class="modal" style="max-width:760px">
+    <h3 id="history-details-title">Action details</h3>
+    <p id="history-details-meta" style="color:var(--text-muted);font-size:0.85rem;margin-bottom:10px"></p>
+    <div id="history-details-revisions" style="max-height:50vh;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-history-details')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Revert confirmation -->
+<div class="modal-backdrop" id="modal-history-revert">
+  <div class="modal" style="max-width:560px">
+    <h3>Revert this action?</h3>
+    <p id="history-revert-summary" style="color:var(--text);font-size:0.9rem;margin-bottom:6px"></p>
+    <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:12px">Reverting will also discard every action that happened after it. The wiki will be restored to its state right before this action ran.</p>
+    <div id="history-revert-discard-list" style="max-height:30vh;overflow-y:auto;font-size:0.82rem;padding:8px;background:var(--surface2);border-radius:6px;margin-bottom:10px"></div>
+    <p style="color:var(--warning);font-size:0.82rem;margin-bottom:8px">This cannot be undone except by reverting the revert itself.</p>
+    <label style="font-size:0.85rem;color:var(--text)">Type <strong id="history-revert-confirm-token"></strong> to confirm:</label>
+    <input type="text" id="history-revert-confirm-input" placeholder="" style="width:100%;margin-top:4px;padding:6px 8px" oninput="_updateRevertConfirmBtn()">
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-history-revert')">Cancel</button>
+      <button class="btn btn-danger" id="btn-history-revert-confirm" disabled>Revert</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="/static/admin.js"></script>
+</body>
+</html>

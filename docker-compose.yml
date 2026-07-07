@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: ${IMAGE_PREFIX}llm-wiki-data:latest
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: wiki
+      POSTGRES_PASSWORD: wiki
+      POSTGRES_DB: wiki
+    ports:
+      - "${POSTGRES_PORT:-}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wiki"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  wiki:
+    build: .
+    image: ${IMAGE_PREFIX}llm-wiki-app:latest
+    labels:
+      - "app=llm-wiki-app"
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LANGCHAIN_TRACING_V2=false
+      - LANGSMITH_TRACING=false
+      - LANGCHAIN_CALLBACKS_BACKGROUND=false
+      - DATABASE_URL=postgresql+asyncpg://wiki:wiki@postgres:5432/wiki
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
+      - DATA_DIR=/data
+    volumes:
+      - data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    pids_limit: 512
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 65536
+        hard: 65536
+
+volumes:
+  postgres_data:
+  data:

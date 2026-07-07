@@ -1,0 +1,22 @@
+[project]
+name = "karpathy-llm-wiki"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "aiofiles>=23.2.1",
+    "boto3>=1.35.0",
+    "fastapi>=0.115.0",
+    "langchain-aws>=0.2.0",
+    "langchain-core>=0.3.0",
+    "langgraph>=0.2.0",
+    "networkx>=3.6.1",
+    "pydantic-settings>=2.6.0",
+    "pypdf>=4.3.0",
+    "python-docx>=1.1.0",
+    "python-multipart>=0.0.9",
+    "pyvis>=0.3.2",
+    "tzdata>=2024.1",
+    "uvicorn[standard]>=0.30.0",
+]
