@@ -1,4 +1,5 @@
 """Unit tests for wiki_import pure helpers (no DB)."""
+from app import model
 from app.config import settings
 from app.services.wiki_import import _is_unsafe_rel, _embeddings_compatible
 
@@ -24,7 +25,7 @@ def test_is_unsafe_rel_allows_normal_paths():
 def test_embeddings_compatible_when_model_and_dims_match():
     manifest = {
         "embedding_dimensions": settings.EMBEDDING_DIMENSIONS,
-        "embedding_model": settings.BEDROCK_EMBEDDING_MODEL_ID or "",
+        "embedding_model": model.model_id_for(model.Role.EMBEDDING),
     }
     assert _embeddings_compatible(manifest, {"p": [0.1, 0.2]}) is True
 
@@ -32,13 +33,13 @@ def test_embeddings_compatible_when_model_and_dims_match():
 def test_embeddings_incompatible_when_no_vectors():
     manifest = {
         "embedding_dimensions": settings.EMBEDDING_DIMENSIONS,
-        "embedding_model": settings.BEDROCK_EMBEDDING_MODEL_ID or "",
+        "embedding_model": model.model_id_for(model.Role.EMBEDDING),
     }
     assert _embeddings_compatible(manifest, {}) is False
 
 
 def test_embeddings_incompatible_on_dimension_mismatch():
-    manifest = {"embedding_dimensions": 99999, "embedding_model": settings.BEDROCK_EMBEDDING_MODEL_ID or ""}
+    manifest = {"embedding_dimensions": 99999, "embedding_model": model.model_id_for(model.Role.EMBEDDING)}
     assert _embeddings_compatible(manifest, {"p": [0.1]}) is False
 
 

@@ -58,14 +58,14 @@ async def _mock_db(execute_results):
 def test_embedding_disabled_by_default():
     from app.services import embeddings
     with patch("app.model.settings") as mock_settings:
-        mock_settings.BEDROCK_EMBEDDING_MODEL_ID = ""
+        mock_settings.MODEL_EMBEDDING = ""
         assert embeddings.is_enabled() is False
 
 
 def test_embedding_enabled_when_model_set():
     from app.services import embeddings
     with patch("app.model.settings") as mock_settings:
-        mock_settings.BEDROCK_EMBEDDING_MODEL_ID = "amazon.titan-embed-text-v2:0"
+        mock_settings.MODEL_EMBEDDING = "amazon.titan-embed-text-v2:0"
         assert embeddings.is_enabled() is True
 
 

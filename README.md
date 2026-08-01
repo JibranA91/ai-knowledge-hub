@@ -59,8 +59,8 @@ Every model call in the app goes through one module, [`app/model.py`](app/model.
 
 ```
 call sites  ──►  app/model.py  ──►  app/providers/<vendor>.py  ──►  vendor SDK
-(ask for a role)  (role → model ID,   (the only place a client
-                   usage tracking)     is constructed)
+(ask for a role)  (role → model name,  (name → the vendor's model ID;
+                   usage tracking)      the only place a client is built)
 ```
 
 Call sites ask for a **role** — what the model is for — never a model ID:
@@ -73,23 +73,60 @@ client = model.get_converse(model.Role.QUERY)                     # converse + s
 vec    = await model.embed("some text")                           # None when embeddings are disabled
 ```
 
-| Role | Used by | Configured with |
-|---|---|---|
-| `INGEST_PLAN` | ingest planner (tool-calling loop) | `BEDROCK_INGEST_MODEL_ID` |
-| `INGEST_WRITE` | ingest page renderer | `BEDROCK_INGEST_WRITER_MODEL_ID` |
-| `QUERY` | chat / Q&A | `BEDROCK_QUERY_MODEL_ID` |
-| `RECALIBRATE` | wiki-wide analyze + rewrite | `BEDROCK_RECALIBRATE_MODEL_ID` |
-| `DRAFT_AGENT` | conversational AI Writer | `BEDROCK_DRAFT_AGENT_MODEL_ID` |
-| `EDIT` | inline page/section editor | `BEDROCK_EDIT_MODEL_ID` |
-| `EMBEDDING` | semantic search vectors | `BEDROCK_EMBEDDING_MODEL_ID` |
+Config names a **model**, not a vendor model ID. The provider maps the name to its own ID, so the same config survives a change of backend:
 
-Because the role → model mapping lives in one place, pointing a role at a different model is a `.env` change. Token usage is recorded centrally in [`app/providers/usage.py`](app/providers/usage.py), so every call is logged to `usage_log` regardless of backend.
+| Role | Used by | Configured with | Default |
+|---|---|---|---|
+| `INGEST_PLAN` | ingest planner (tool-calling loop) | `MODEL_INGEST_PLAN` | `haiku45` |
+| `INGEST_WRITE` | ingest page renderer | `MODEL_INGEST_WRITE` | `haiku45` |
+| `QUERY` | chat / Q&A | `MODEL_QUERY` | `haiku45` |
+| `RECALIBRATE` | wiki-wide analyze + rewrite | `MODEL_RECALIBRATE` | `sonnet45` |
+| `DRAFT_AGENT` | conversational AI Writer | `MODEL_DRAFT_AGENT` | `haiku45` |
+| `EDIT` | inline page/section editor | `MODEL_EDIT` | `sonnet45` |
+| `EMBEDDING` | semantic search vectors | `MODEL_EMBEDDING` | *(unset — BM25 only)* |
+
+So switching the chat model is one word:
+
+```diff
+- MODEL_QUERY=haiku45
++ MODEL_QUERY=sonnet5
+```
+
+**Model names for `LLM_PROVIDER=bedrock`** — the catalogue lives in `MODEL_CATALOG` in [`app/providers/bedrock.py`](app/providers/bedrock.py):
+
+| Family | Names |
+|---|---|
+| Claude | `fable5` `opus5` `opus48` `opus47` `opus46` `opus45` `opus41` `sonnet5` `sonnet46` `sonnet45` `sonnet4` `haiku45` `haiku3` |
+| Llama | `llama4maverick` `llama4scout` |
+| Embeddings | `titanembedv2` `titanembedv1` `cohereembedv4` `cohereembeden` `cohereembedml` |
+
+Matching ignores case and punctuation — `haiku45`, `haiku-4.5` and `Haiku 4.5` are the same model. Names resolve to Bedrock cross-region inference profile IDs using `BEDROCK_INFERENCE_GEO` (`us` by default) as the prefix:
+
+```
+MODEL_QUERY=haiku45  +  BEDROCK_INFERENCE_GEO=us
+  → us.anthropic.claude-haiku-4-5-20251001-v1:0
+```
+
+Set `BEDROCK_INFERENCE_GEO=global` for the global profile, or leave it blank to call the foundation model directly with no profile. Embedding models are plain foundation models and are never prefixed.
+
+**Escape hatch:** a value containing `.`, `:` or `/` is treated as a raw Bedrock model ID or inference-profile ARN and passed through untouched, so anything the catalogue doesn't cover still works. An unknown *bare* name is rejected at startup with the list of valid names — a typo can't reach Bedrock as an opaque 400. Adding a model to the catalogue is one line; to see what your account exposes:
+
+```bash
+aws bedrock list-inference-profiles \
+  --query 'inferenceProfileSummaries[].inferenceProfileId' --output table
+```
+
+Token usage is recorded centrally in [`app/providers/usage.py`](app/providers/usage.py), so every call is logged to `usage_log` regardless of backend.
+
+> **Upgrading:** the older `BEDROCK_*_MODEL_ID` variables still work — each is folded onto its `MODEL_*` replacement when that one isn't explicitly set — so an existing `.env` needs no changes. They're deprecated and will be removed; see the mapping at the bottom of [`.env.example`](.env.example).
 
 **Adding a provider** (OpenAI, Anthropic direct, Azure, Ollama, …):
 
-1. Implement the `Provider` protocol from [`app/providers/base.py`](app/providers/base.py) in `app/providers/<name>.py`.
+1. Implement the `Provider` protocol from [`app/providers/base.py`](app/providers/base.py) in `app/providers/<name>.py`, including its own `resolve_model()` name catalogue.
 2. Register it in `app/providers/__init__.py`.
-3. Set `LLM_PROVIDER=<name>` and the per-role model IDs.
+3. Set `LLM_PROVIDER=<name>`.
+
+Model names are provider-neutral, so a role configured as `sonnet45` keeps working — the new provider maps it to whatever that vendor calls the model. A name a provider can't serve is rejected at startup rather than silently substituted.
 
 No call site changes. `app/services/bedrock.py` remains as a deprecated re-export shim and will be removed.
 
@@ -1085,7 +1122,8 @@ pytest tests/unit -v
 | `test_wiki_db.py` | `get_compact_index`, `semantic_search_wiki`, `get_rendered_log` |
 | `test_semantic_search.py` | Embeddings service, hybrid/BM25 search, paginated listing, wiki links, Louvain clusters |
 | `test_provider_bedrock.py` | `converse`, `converse_stream`, credential rotation, embedding payload shaping |
-| `test_model.py` | role → model resolution, chat/converse factories, embedding fallback, provider registry |
+| `test_model.py` | role → name → ID resolution, startup validation, chat/converse factories, embedding fallback, provider registry |
+| `test_config_model_vars.py` | model-name defaults and the legacy `BEDROCK_*_MODEL_ID` promotion rules |
 | `test_no_direct_llm_clients.py` | architecture guard — no LLM client constructed outside `app/providers/` |
 | `test_aws_auth.py` | Static creds, STS role assumption, expiry buffer, cache, refresh loop, start/stop task |
 | `test_s3.py` | Local filesystem backend (read, write, delete, exists, list, size, `ensure_bucket`) and S3 backend with mocked boto3 |

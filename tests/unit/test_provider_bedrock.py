@@ -224,3 +224,104 @@ def test_cohere_parse_response():
     vec = [0.4, 0.5, 0.6]
     body = json.dumps({"embeddings": [vec]}).encode()
     assert _parse_response_body("cohere.embed-english-v3", body) == vec
+
+
+# -- model name catalogue --------------------------------------------------
+
+import pytest
+from app.providers.base import UnknownModelError
+
+
+def _provider():
+    from app.providers.bedrock import BedrockProvider
+    return BedrockProvider()
+
+
+@pytest.mark.parametrize("name,expected", [
+    ("haiku45",   "us.anthropic.claude-haiku-4-5-20251001-v1:0"),
+    ("sonnet45",  "us.anthropic.claude-sonnet-4-5-20250929-v1:0"),
+    ("sonnet5",   "us.anthropic.claude-sonnet-5"),
+    ("opus5",     "us.anthropic.claude-opus-5"),
+    ("fable5",    "us.anthropic.claude-fable-5"),
+    ("llama4maverick", "us.meta.llama4-maverick-17b-instruct-v1:0"),
+])
+def test_chat_names_resolve_with_the_geo_prefix(name, expected):
+    with patch("app.providers.bedrock.settings") as s:
+        s.BEDROCK_INFERENCE_GEO = "us"
+        assert _provider().resolve_model(name) == expected
+
+
+@pytest.mark.parametrize("spelling", ["haiku45", "haiku-4.5", "Haiku 4.5", "HAIKU_4_5", " haiku4.5 "])
+def test_name_matching_ignores_case_and_punctuation(spelling):
+    """Nobody should have to remember which separator we picked."""
+    with patch("app.providers.bedrock.settings") as s:
+        s.BEDROCK_INFERENCE_GEO = "us"
+        assert _provider().resolve_model(spelling) == "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+
+
+def test_embedding_names_are_never_geo_prefixed():
+    """Embedding models are plain foundation models, not inference profiles."""
+    with patch("app.providers.bedrock.settings") as s:
+        s.BEDROCK_INFERENCE_GEO = "us"
+        assert _provider().resolve_model("titanembedv2") == "amazon.titan-embed-text-v2:0"
+        assert _provider().resolve_model("cohereembeden") == "cohere.embed-english-v3"
+
+
+def test_geo_selects_the_inference_profile():
+    with patch("app.providers.bedrock.settings") as s:
+        s.BEDROCK_INFERENCE_GEO = "global"
+        assert _provider().resolve_model("opus5") == "global.anthropic.claude-opus-5"
+
+
+def test_empty_geo_calls_the_foundation_model_directly():
+    with patch("app.providers.bedrock.settings") as s:
+        s.BEDROCK_INFERENCE_GEO = ""
+        assert _provider().resolve_model("haiku45") == "anthropic.claude-haiku-4-5-20251001-v1:0"
+
+
+def test_geo_without_a_profile_for_that_model_is_rejected():
+    """AWS publishes no global profile for opus41 — say so, don't emit a 400."""
+    with patch("app.providers.bedrock.settings") as s:
+        s.BEDROCK_INFERENCE_GEO = "global"
+        with pytest.raises(UnknownModelError, match="no 'global' inference profile"):
+            _provider().resolve_model("opus41")
+
+
+@pytest.mark.parametrize("raw", [
+    "us.anthropic.claude-opus-4-7",
+    "anthropic.claude-opus-5",
+    "amazon.titan-embed-text-v2:0",
+    "arn:aws:bedrock:us-east-1:123:inference-profile/custom",
+])
+def test_raw_model_ids_pass_through_untouched(raw):
+    with patch("app.providers.bedrock.settings") as s:
+        s.BEDROCK_INFERENCE_GEO = "us"
+        assert _provider().resolve_model(raw) == raw
+
+
+@pytest.mark.parametrize("typo", ["sonet45", "haiku4.5x", "opus-6", "totally.bogus", "claude"])
+def test_typos_are_rejected_rather_than_forwarded_to_bedrock(typo):
+    """A dot alone doesn't make it an ID — 'haiku4.5x' is a typo, not a model."""
+    with patch("app.providers.bedrock.settings") as s:
+        s.BEDROCK_INFERENCE_GEO = "us"
+        with pytest.raises(UnknownModelError, match="Unknown model name"):
+            _provider().resolve_model(typo)
+
+
+def test_unknown_name_error_lists_the_valid_names():
+    with patch("app.providers.bedrock.settings") as s:
+        s.BEDROCK_INFERENCE_GEO = "us"
+        with pytest.raises(UnknownModelError) as exc:
+            _provider().resolve_model("nope")
+    assert "haiku45" in str(exc.value)
+
+
+def test_every_catalog_entry_resolves():
+    """No entry can be unreachable — catches a typo'd catalogue key."""
+    from app.providers.bedrock import MODEL_CATALOG
+    p = _provider()
+    for name, entry in MODEL_CATALOG.items():
+        geo = "us" if entry.geos is None else sorted(entry.geos)[0]
+        with patch("app.providers.bedrock.settings") as s:
+            s.BEDROCK_INFERENCE_GEO = geo
+            assert entry.model_id in p.resolve_model(name)
