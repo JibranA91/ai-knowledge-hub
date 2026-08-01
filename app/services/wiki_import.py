@@ -13,6 +13,7 @@ import json
 import posixpath
 import zipfile
 
+from app import model
 from app.config import settings
 from app.logger import get_logger
 from app.services.graph import get_graph
@@ -46,7 +47,7 @@ def _embeddings_compatible(manifest: dict, emb_map: dict) -> bool:
         return False
     return (
         manifest.get("embedding_dimensions") == settings.EMBEDDING_DIMENSIONS
-        and (manifest.get("embedding_model") or "") == (settings.BEDROCK_EMBEDDING_MODEL_ID or "")
+        and (manifest.get("embedding_model") or "") == model.model_id_for(model.Role.EMBEDDING)
     )
 
 

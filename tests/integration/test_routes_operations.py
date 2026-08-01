@@ -62,7 +62,7 @@ async def test_query_returns_answer(client, auth_headers):
         new_callable=AsyncMock,
         return_value=[],
     ), patch(
-        "app.services.bedrock.BedrockService.converse",
+        "app.providers.bedrock.BedrockConverseClient.converse",
         new_callable=AsyncMock,
         return_value=mock_answer,
     ):
@@ -93,7 +93,7 @@ async def test_chat_creates_session(client, auth_headers):
         new_callable=AsyncMock,
         return_value=[],
     ), patch(
-        "app.services.bedrock.BedrockService.converse",
+        "app.providers.bedrock.BedrockConverseClient.converse",
         new_callable=AsyncMock,
         return_value="Hello there!",
     ):
@@ -116,7 +116,7 @@ async def test_chat_continues_session(client, auth_headers):
         new_callable=AsyncMock,
         return_value=[],
     ), patch(
-        "app.services.bedrock.BedrockService.converse",
+        "app.providers.bedrock.BedrockConverseClient.converse",
         new_callable=AsyncMock,
         return_value="Response 1",
     ) as mock_converse:
@@ -153,7 +153,7 @@ async def test_clear_chat_session(client, auth_headers):
         new_callable=AsyncMock,
         return_value=[],
     ), patch(
-        "app.services.bedrock.BedrockService.converse",
+        "app.providers.bedrock.BedrockConverseClient.converse",
         new_callable=AsyncMock,
         return_value="ok",
     ):
@@ -267,7 +267,7 @@ async def test_update_schema(client, auth_headers):
 @pytest.mark.asyncio
 async def test_lint_returns_health_report(client, auth_headers):
     with patch(
-        "app.services.bedrock.BedrockService.converse",
+        "app.providers.bedrock.BedrockConverseClient.converse",
         new_callable=AsyncMock,
         return_value='{"issues": [], "suggestions": ["All good."], "health_score": 95}',
     ), patch(
@@ -356,7 +356,7 @@ async def test_plan_chat_updates_plan(client, auth_headers, user_ctx):
     await save(job)
 
     with patch(
-        "app.services.bedrock.BedrockService.converse",
+        "app.providers.bedrock.BedrockConverseClient.converse",
         new_callable=AsyncMock,
         return_value='{"reply": "Added foo.", "updated_plan": [{"path": "concepts/foo.md", "action": "create", "brief": "foo"}], "index_additions": null, "log_entry": null}',
     ), patch(

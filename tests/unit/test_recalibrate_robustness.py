@@ -71,7 +71,7 @@ async def _run_analyze(state, *, response_json, adj=None):
     """Build the graph with a captured-LLM + mock graph, run only analyze_node."""
     llm_factory, captured = _llm_capturing(response_json)
     with (
-        patch("app.services.recalibrate_agent.make_chat_llm", llm_factory),
+        patch("app.model.get_chat", llm_factory),
         patch("app.services.recalibrate_agent.recalibrate_job") as mock_job_mod,
         patch("app.services.graph.get_graph", _mock_graph(adj)),
     ):

@@ -2,12 +2,21 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    # ── LLM provider ───────────────────────────────────────────────────────
+    # Which backend serves every model call. All connections are created in
+    # app/providers/<name>.py and reached through app/model.py — nothing else
+    # in the codebase talks to an LLM vendor directly.
+    # Registered providers: see app/providers/__init__.py.
+    LLM_PROVIDER: str = "bedrock"
+
     AWS_REGION: str = "us-east-1"
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
     ASSUMED_ROLE_ARN: str = ""
     ASSUMED_ROLE_SESSION_NAME: str = "WikiAgentSession"
     ASSUMED_ROLE_DURATION: int = 3600
+    # ── Model IDs, one per logical role (app.model.Role) ───────────────────
+    # Role INGEST_PLAN — ingest planner, a tool-calling reasoning loop.
     BEDROCK_INGEST_MODEL_ID: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
     # Page renderer used inside the ingest pipeline — writes the markdown body
     # of an individual planned page. Single-shot, no reasoning loop.
