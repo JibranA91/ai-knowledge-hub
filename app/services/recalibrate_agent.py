@@ -27,10 +27,9 @@ from typing import Annotated, TypedDict
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 
-from app.config import settings
 from app.logger import get_logger
 from app.services import recalibrate_job, wiki_health
-from app.services.bedrock import make_chat_llm
+from app import model
 from app.utils import (
     page_type_or_infer, parse_llm_json, strip_fence_unconditional, strip_outer_wrapper_fence,
 )
@@ -370,8 +369,8 @@ def _merge_analyze_plans(batch_results: list[dict]) -> dict:
 # ── Graph builder ──────────────────────────────────────────────────────────
 
 def build_recalibrate_graph():
-    strong_llm = make_chat_llm(settings.BEDROCK_RECALIBRATE_MODEL_ID, max_tokens=16384, operation="recalibrate_analyze")
-    writer_llm = make_chat_llm(settings.BEDROCK_RECALIBRATE_MODEL_ID, max_tokens=8192, operation="recalibrate_write")
+    strong_llm = model.get_chat(model.Role.RECALIBRATE, max_tokens=16384, operation="recalibrate_analyze")
+    writer_llm = model.get_chat(model.Role.RECALIBRATE, max_tokens=8192, operation="recalibrate_write")
     _MAX_CONTINUATIONS = 2
     _sem = asyncio.Semaphore(_IMPROVE_SEMAPHORE)
 

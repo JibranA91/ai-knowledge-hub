@@ -12,7 +12,7 @@ import pytest
 from unittest.mock import patch
 
 from app.services import chat_sessions
-from app.services.bedrock import BedrockService
+from app.providers.bedrock import BedrockConverseClient as BedrockService
 from app.services.wiki_engine import WikiEngine
 
 

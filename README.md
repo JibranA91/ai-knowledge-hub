@@ -53,6 +53,46 @@ The `STORAGE_BACKEND` variable controls **only raw uploaded files** (PDFs, DOCXs
 
 PostgreSQL stores auth tokens, ingest jobs, chat sessions, recalibration state, wiki pages (content + FTS index), graph cache, schema, and audit logs.
 
+### The LLM layer
+
+Every model call in the app goes through one module, [`app/model.py`](app/model.py). **No LLM connection is created anywhere else** — `tests/unit/test_no_direct_llm_clients.py` fails the build if one is.
+
+```
+call sites  ──►  app/model.py  ──►  app/providers/<vendor>.py  ──►  vendor SDK
+(ask for a role)  (role → model ID,   (the only place a client
+                   usage tracking)     is constructed)
+```
+
+Call sites ask for a **role** — what the model is for — never a model ID:
+
+```python
+from app import model
+
+llm    = model.get_chat(model.Role.INGEST_PLAN, max_tokens=4096)  # LangChain runnable, supports bind_tools
+client = model.get_converse(model.Role.QUERY)                     # converse + streaming
+vec    = await model.embed("some text")                           # None when embeddings are disabled
+```
+
+| Role | Used by | Configured with |
+|---|---|---|
+| `INGEST_PLAN` | ingest planner (tool-calling loop) | `BEDROCK_INGEST_MODEL_ID` |
+| `INGEST_WRITE` | ingest page renderer | `BEDROCK_INGEST_WRITER_MODEL_ID` |
+| `QUERY` | chat / Q&A | `BEDROCK_QUERY_MODEL_ID` |
+| `RECALIBRATE` | wiki-wide analyze + rewrite | `BEDROCK_RECALIBRATE_MODEL_ID` |
+| `DRAFT_AGENT` | conversational AI Writer | `BEDROCK_DRAFT_AGENT_MODEL_ID` |
+| `EDIT` | inline page/section editor | `BEDROCK_EDIT_MODEL_ID` |
+| `EMBEDDING` | semantic search vectors | `BEDROCK_EMBEDDING_MODEL_ID` |
+
+Because the role → model mapping lives in one place, pointing a role at a different model is a `.env` change. Token usage is recorded centrally in [`app/providers/usage.py`](app/providers/usage.py), so every call is logged to `usage_log` regardless of backend.
+
+**Adding a provider** (OpenAI, Anthropic direct, Azure, Ollama, …):
+
+1. Implement the `Provider` protocol from [`app/providers/base.py`](app/providers/base.py) in `app/providers/<name>.py`.
+2. Register it in `app/providers/__init__.py`.
+3. Set `LLM_PROVIDER=<name>` and the per-role model IDs.
+
+No call site changes. `app/services/bedrock.py` remains as a deprecated re-export shim and will be removed.
+
 ---
 
 ## Running Locally
@@ -1044,7 +1084,9 @@ pytest tests/unit -v
 | `test_wiki_engine.py` | `_parse_json`, `_find_relevant_pages`, `_maybe_summarize`, `lint`, `query`, `chat`, `chat_stream`, `plan_chat`, helper methods |
 | `test_wiki_db.py` | `get_compact_index`, `semantic_search_wiki`, `get_rendered_log` |
 | `test_semantic_search.py` | Embeddings service, hybrid/BM25 search, paginated listing, wiki links, Louvain clusters |
-| `test_bedrock.py` | `converse`, `converse_stream`, credential rotation |
+| `test_provider_bedrock.py` | `converse`, `converse_stream`, credential rotation, embedding payload shaping |
+| `test_model.py` | role → model resolution, chat/converse factories, embedding fallback, provider registry |
+| `test_no_direct_llm_clients.py` | architecture guard — no LLM client constructed outside `app/providers/` |
 | `test_aws_auth.py` | Static creds, STS role assumption, expiry buffer, cache, refresh loop, start/stop task |
 | `test_s3.py` | Local filesystem backend (read, write, delete, exists, list, size, `ensure_bucket`) and S3 backend with mocked boto3 |
 | `test_ingest_agent.py` | `_parse_json`, `_split_chunks`, `_extract_text` (txt/md/fallback), `_base_state` |
@@ -1148,7 +1190,7 @@ pytest tests/unit --cov=app/services --cov=app/routes --cov-report=term-missing
 | `app/services/wiki_state.py` · `jobs.py` | 93% |
 | `app/services/wiki_health.py` · `notif_stream.py` · `writer_stream.py` | 91–92% |
 | `app/services/wiki_import.py` | 87% |
-| `app/services/bedrock.py` · `wiki_db.py` | 83% |
+| `app/providers/bedrock.py` · `wiki_db.py` | 83% |
 | `app/services/wiki_engine.py` | 78% |
 | `app/services/ingest_queue.py` | 76% |
 | `app/services/s3.py` | 68% |

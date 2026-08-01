@@ -9,7 +9,7 @@ import pytest
 import pytest_asyncio
 from unittest.mock import patch
 
-from app.services.bedrock import BedrockService
+from app.providers.bedrock import BedrockConverseClient as BedrockService
 
 _DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001"
 

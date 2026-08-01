@@ -57,14 +57,14 @@ async def _mock_db(execute_results):
 
 def test_embedding_disabled_by_default():
     from app.services import embeddings
-    with patch("app.services.embeddings.settings") as mock_settings:
+    with patch("app.model.settings") as mock_settings:
         mock_settings.BEDROCK_EMBEDDING_MODEL_ID = ""
         assert embeddings.is_enabled() is False
 
 
 def test_embedding_enabled_when_model_set():
     from app.services import embeddings
-    with patch("app.services.embeddings.settings") as mock_settings:
+    with patch("app.model.settings") as mock_settings:
         mock_settings.BEDROCK_EMBEDDING_MODEL_ID = "amazon.titan-embed-text-v2:0"
         assert embeddings.is_enabled() is True
 
@@ -101,64 +101,27 @@ async def test_embed_text_returns_none_when_disabled():
 
 
 @pytest.mark.asyncio
-async def test_embed_text_calls_bedrock_when_enabled():
+async def test_embed_text_delegates_to_model_when_enabled():
     from app.services import embeddings
     fake_vec = [0.1] * 1536
     with patch.object(embeddings, "is_enabled", return_value=True), \
-         patch("app.services.embeddings._embed_sync", return_value=fake_vec) as mock_sync, \
-         patch("asyncio.to_thread", new_callable=AsyncMock, return_value=fake_vec):
+         patch("app.model.embed", new_callable=AsyncMock, return_value=fake_vec) as mock_embed:
         result = await embeddings.embed_text("hello world")
     assert result is not None
     assert len(result) == 1536
+    mock_embed.assert_awaited_once_with("hello world")
 
 
 @pytest.mark.asyncio
 async def test_embed_text_returns_none_on_error():
+    """model.embed swallows provider errors; embed_text propagates the None."""
+    from app import model
     from app.services import embeddings
     with patch.object(embeddings, "is_enabled", return_value=True), \
+         patch.object(model, "embedding_enabled", return_value=True), \
          patch("asyncio.to_thread", side_effect=RuntimeError("Bedrock down")):
         result = await embeddings.embed_text("hello")
     assert result is None
-
-
-# ── embeddings._build_request_body / _parse_response_body ─────────────────
-
-def test_titan_embed_request_body():
-    from app.services.embeddings import _build_request_body
-    with patch("app.services.embeddings.settings") as s:
-        s.BEDROCK_EMBEDDING_MODEL_ID = "amazon.titan-embed-text-v2:0"
-        body = json.loads(_build_request_body("hello"))
-    assert "inputText" in body
-    assert body["inputText"] == "hello"
-
-
-def test_cohere_embed_request_body():
-    from app.services.embeddings import _build_request_body
-    with patch("app.services.embeddings.settings") as s:
-        s.BEDROCK_EMBEDDING_MODEL_ID = "cohere.embed-english-v3"
-        body = json.loads(_build_request_body("hello"))
-    assert "texts" in body
-    assert body["texts"] == ["hello"]
-
-
-def test_titan_parse_response():
-    from app.services.embeddings import _parse_response_body
-    vec = [0.1, 0.2, 0.3]
-    body = json.dumps({"embedding": vec}).encode()
-    with patch("app.services.embeddings.settings") as s:
-        s.BEDROCK_EMBEDDING_MODEL_ID = "amazon.titan-embed-text-v2:0"
-        result = _parse_response_body(body)
-    assert result == vec
-
-
-def test_cohere_parse_response():
-    from app.services.embeddings import _parse_response_body
-    vec = [0.4, 0.5, 0.6]
-    body = json.dumps({"embeddings": [vec]}).encode()
-    with patch("app.services.embeddings.settings") as s:
-        s.BEDROCK_EMBEDDING_MODEL_ID = "cohere.embed-english-v3"
-        result = _parse_response_body(body)
-    assert result == vec
 
 
 # ── wiki_db.find_relevant_pages ───────────────────────────────────────────

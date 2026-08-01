@@ -266,7 +266,7 @@ async def user_ctx(default_user):
 @pytest.fixture(autouse=True)
 def mock_bedrock():
     with patch(
-        "app.services.bedrock.BedrockService.converse",
+        "app.providers.bedrock.BedrockConverseClient.converse",
         new_callable=AsyncMock,
         return_value='{"issues": [], "suggestions": [], "health_score": 100}',
     ) as mock:
