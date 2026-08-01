@@ -1,5 +1,18 @@
 from pydantic_settings import BaseSettings
 
+# Legacy raw-model-ID var → the MODEL_* name var that replaced it. Applied in
+# Settings.model_post_init so a .env written before the model-name catalogue
+# keeps working untouched.
+LEGACY_MODEL_VARS = {
+    "BEDROCK_INGEST_MODEL_ID":        "MODEL_INGEST_PLAN",
+    "BEDROCK_INGEST_WRITER_MODEL_ID": "MODEL_INGEST_WRITE",
+    "BEDROCK_QUERY_MODEL_ID":         "MODEL_QUERY",
+    "BEDROCK_RECALIBRATE_MODEL_ID":   "MODEL_RECALIBRATE",
+    "BEDROCK_DRAFT_AGENT_MODEL_ID":   "MODEL_DRAFT_AGENT",
+    "BEDROCK_EDIT_MODEL_ID":          "MODEL_EDIT",
+    "BEDROCK_EMBEDDING_MODEL_ID":     "MODEL_EMBEDDING",
+}
+
 
 class Settings(BaseSettings):
     # ── LLM provider ───────────────────────────────────────────────────────
@@ -15,29 +28,56 @@ class Settings(BaseSettings):
     ASSUMED_ROLE_ARN: str = ""
     ASSUMED_ROLE_SESSION_NAME: str = "WikiAgentSession"
     ASSUMED_ROLE_DURATION: int = 3600
-    # ── Model IDs, one per logical role (app.model.Role) ───────────────────
-    # Role INGEST_PLAN — ingest planner, a tool-calling reasoning loop.
-    BEDROCK_INGEST_MODEL_ID: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-    # Page renderer used inside the ingest pipeline — writes the markdown body
-    # of an individual planned page. Single-shot, no reasoning loop.
-    BEDROCK_INGEST_WRITER_MODEL_ID: str = "us.meta.llama4-maverick-17b-instruct-v1:0"
-    BEDROCK_QUERY_MODEL_ID: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-    BEDROCK_RECALIBRATE_MODEL_ID: str = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    # ── Models, one per logical role (app.model.Role) ──────────────────────
+    # These hold a *model name*, not a vendor model ID: "haiku45", "sonnet45",
+    # "opus5". The active provider maps the name to its own concrete ID (for
+    # bedrock, see MODEL_CATALOG in app/providers/bedrock.py), so the same
+    # config works against a different vendor. Names are matched loosely —
+    # "haiku45", "haiku-4.5" and "Haiku 4.5" are the same model.
+    # A value containing '.', ':' or '/' is treated as a raw vendor model ID
+    # and passed through untouched, as an escape hatch for anything the
+    # catalogue doesn't cover. Unknown bare names fail at startup.
+
+    # Ingest planner — a tool-calling reasoning loop.
+    MODEL_INGEST_PLAN: str = "haiku45"
+    # Page renderer inside the ingest pipeline — writes the markdown body of an
+    # individual planned page. Single-shot, no reasoning loop.
+    MODEL_INGEST_WRITE: str = "llama4maverick"
+    # Chat / Q&A over the wiki.
+    MODEL_QUERY: str = "haiku45"
+    # Wiki-wide analysis and rewrite.
+    MODEL_RECALIBRATE: str = "sonnet45"
     # Conversational AI Writer agent (the chat-driven document authoring
     # flow). Multi-turn reasoner — asks clarifying questions, drafts the page,
-    # accepts revisions. Defaults to the query model.
-    BEDROCK_DRAFT_AGENT_MODEL_ID: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    # accepts revisions.
+    MODEL_DRAFT_AGENT: str = "haiku45"
     # Inline AI editor — rewrites a whole page or one section against an
-    # instruction. Single-shot (no reasoning loop); defaults to the draft model.
-    BEDROCK_EDIT_MODEL_ID: str = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    # instruction. Single-shot, no reasoning loop.
+    MODEL_EDIT: str = "sonnet45"
+    # Optional semantic embeddings. Leave empty to disable vector search.
+    # Recommended: titanembedv2 (1536-dim) or cohereembeden (1024-dim).
+    MODEL_EMBEDDING: str = "titanembedv1"
 
-    # ── Back-compat for the old name. If BEDROCK_WRITER_MODEL_ID is set in
-    # the environment, pydantic-settings will populate this; we copy it onto
+    # Cross-region inference profile geography for Bedrock text models: "us",
+    # "eu", "global", … It becomes the model ID's prefix (us.anthropic.…).
+    # Leave empty to call foundation models directly with no profile.
+    BEDROCK_INFERENCE_GEO: str = "us"
+
+    # ── Back-compat: the pre-name-catalogue variables ──────────────────────
+    # These held raw Bedrock model IDs. Still honoured — a role falls back to
+    # its BEDROCK_*_MODEL_ID when the MODEL_* above is unset — so existing .env
+    # files keep working. Prefer the MODEL_* names for new deployments.
+    BEDROCK_INGEST_MODEL_ID: str = ""
+    BEDROCK_INGEST_WRITER_MODEL_ID: str = ""
+    BEDROCK_QUERY_MODEL_ID: str = ""
+    BEDROCK_RECALIBRATE_MODEL_ID: str = ""
+    BEDROCK_DRAFT_AGENT_MODEL_ID: str = ""
+    BEDROCK_EDIT_MODEL_ID: str = ""
+    BEDROCK_EMBEDDING_MODEL_ID: str = ""
+    # Older still: BEDROCK_WRITER_MODEL_ID, promoted onto
     # BEDROCK_INGEST_WRITER_MODEL_ID in model_post_init below.
     BEDROCK_WRITER_MODEL_ID: str = ""
-    # optional semantic embeddings. Leave empty to disable vector search.
-    # Recommended: amazon.titan-embed-text-v2:0 (1536-dim) or cohere.embed-english-v3 (1024-dim).
-    BEDROCK_EMBEDDING_MODEL_ID: str = "amazon.titan-embed-text-v1"
+
     EMBEDDING_DIMENSIONS: int = 1536
 
     # Deployment environment. When set to "production", the app refuses to boot
@@ -104,10 +144,21 @@ class Settings(BaseSettings):
     model_config = {"env_file": ".env", "extra": "ignore"}
 
     def model_post_init(self, __context) -> None:
-        # If the legacy var BEDROCK_WRITER_MODEL_ID is set in the environment,
-        # promote it onto the new name so existing deployments keep working.
-        if self.BEDROCK_WRITER_MODEL_ID:
+        # BEDROCK_WRITER_MODEL_ID is older still — fold it into the var that
+        # replaced it before the legacy promotion below runs.
+        if self.BEDROCK_WRITER_MODEL_ID and not self.BEDROCK_INGEST_WRITER_MODEL_ID:
             object.__setattr__(self, "BEDROCK_INGEST_WRITER_MODEL_ID", self.BEDROCK_WRITER_MODEL_ID)
+
+        # Promote each legacy raw-model-ID var onto its MODEL_* replacement, so
+        # a .env written before the name catalogue keeps working untouched.
+        # An explicitly-set MODEL_* always wins — that's the newer intent —
+        # which is why this tests model_fields_set rather than truthiness: the
+        # MODEL_* vars have non-empty defaults, so "is it set" and "is it
+        # non-empty" are different questions.
+        for legacy, current in LEGACY_MODEL_VARS.items():
+            value = getattr(self, legacy, "")
+            if value and current not in self.model_fields_set:
+                object.__setattr__(self, current, value)
 
         # Refuse to boot in production while security-sensitive settings are
         # left at their shipped defaults. These defaults are convenient for

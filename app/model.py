@@ -4,10 +4,13 @@
     no application code imports a provider directly. Everything goes through
     this module. `tests/unit/test_no_direct_llm_clients.py` enforces it.
 
-Call sites ask for a *role* (what the model is for), never a model ID. The
-role → model-ID mapping lives here and resolves against config, so retargeting
-a role at a different model — or the whole app at a different vendor — is a
-config change, not a code change.
+Call sites ask for a *role* (what the model is for), never a model ID. Config
+names a *model* per role ("haiku45", "sonnet45"), and the active provider maps
+that name to its own concrete ID. So retargeting a role — or pointing the whole
+app at a different vendor — is a config change, not a code change:
+
+    role  ──►  config: a friendly model name  ──►  provider: the vendor's ID
+    QUERY      MODEL_QUERY=haiku45                 us.anthropic.claude-haiku-4-5-20251001-v1:0
 
 Usage:
 
@@ -36,6 +39,7 @@ from enum import StrEnum
 from app import providers
 from app.config import settings
 from app.logger import get_logger
+from app.providers.base import UnknownModelError
 from app.providers.usage import TrackedChat
 
 log = get_logger(__name__)
@@ -53,17 +57,48 @@ class Role(StrEnum):
     EMBEDDING = "embedding"            # vector embeddings for semantic search
 
 
-# Role → the Settings attribute holding its model ID. Resolved at call time so
-# config changes (and test patches) are picked up without re-import.
+# Role → the Settings attribute holding its model name. Read at call time so
+# config changes (and test patches) are picked up without re-import. The older
+# BEDROCK_*_MODEL_ID vars are folded onto these in Settings.model_post_init,
+# so existing .env files keep working without a second lookup here.
 _ROLE_SETTING: dict[Role, str] = {
-    Role.INGEST_PLAN:  "BEDROCK_INGEST_MODEL_ID",
-    Role.INGEST_WRITE: "BEDROCK_INGEST_WRITER_MODEL_ID",
-    Role.QUERY:        "BEDROCK_QUERY_MODEL_ID",
-    Role.RECALIBRATE:  "BEDROCK_RECALIBRATE_MODEL_ID",
-    Role.DRAFT_AGENT:  "BEDROCK_DRAFT_AGENT_MODEL_ID",
-    Role.EDIT:         "BEDROCK_EDIT_MODEL_ID",
-    Role.EMBEDDING:    "BEDROCK_EMBEDDING_MODEL_ID",
+    Role.INGEST_PLAN:  "MODEL_INGEST_PLAN",
+    Role.INGEST_WRITE: "MODEL_INGEST_WRITE",
+    Role.QUERY:        "MODEL_QUERY",
+    Role.RECALIBRATE:  "MODEL_RECALIBRATE",
+    Role.DRAFT_AGENT:  "MODEL_DRAFT_AGENT",
+    Role.EDIT:         "MODEL_EDIT",
+    Role.EMBEDDING:    "MODEL_EMBEDDING",
 }
+
+
+def validate_configuration() -> dict[Role, str]:
+    """Resolve every configured role against the active provider.
+
+    Called at startup so a typo'd model name fails the boot with a list of
+    valid names, instead of surfacing later as an opaque Bedrock 400 on the
+    first request that happens to use that role. Returns role → resolved ID for
+    the roles that are configured.
+
+    Raises `UnknownModelError` listing every bad role at once — fixing them one
+    restart at a time is nobody's idea of a good time.
+    """
+    resolved: dict[Role, str] = {}
+    problems: list[str] = []
+    for role in Role:
+        name = model_name_for(role)
+        if not name:
+            continue  # optional role (e.g. embeddings) left unset
+        try:
+            resolved[role] = _provider().resolve_model(name)
+        except UnknownModelError as exc:
+            problems.append(f"  {role.value}: {exc}")
+    if problems:
+        raise UnknownModelError(
+            f"Invalid model configuration for provider {provider_name()!r}:\n"
+            + "\n".join(problems)
+        )
+    return resolved
 
 
 def provider_name() -> str:
@@ -75,14 +110,29 @@ def _provider():
     return providers.get(provider_name())
 
 
-def model_id_for(role: Role) -> str:
-    """Resolve *role* to a concrete model ID from config."""
+def model_name_for(role: Role) -> str:
+    """The model *name* configured for *role*, exactly as written in config."""
     try:
         setting = _ROLE_SETTING[Role(role)]
     except (KeyError, ValueError):
         raise ValueError(f"Unknown model role: {role!r}. Known roles: "
                          f"{', '.join(r.value for r in Role)}") from None
-    return getattr(settings, setting, "") or ""
+    return (getattr(settings, setting, "") or "").strip()
+
+
+def model_id_for(role: Role) -> str:
+    """Resolve *role* to the active provider's concrete model ID.
+
+    Raises `UnknownModelError` if the configured name isn't one this provider
+    can serve.
+    """
+    name = model_name_for(role)
+    if not name:
+        return ""
+    try:
+        return _provider().resolve_model(name)
+    except UnknownModelError as exc:
+        raise UnknownModelError(f"role {Role(role).value!r}: {exc}") from None
 
 
 # ── Chat ───────────────────────────────────────────────────────────────────
@@ -115,7 +165,7 @@ def get_converse(role: Role):
 def embedding_enabled() -> bool:
     """True when an embedding model is configured. When False, callers fall
     back to BM25-only search."""
-    return bool(model_id_for(Role.EMBEDDING))
+    return bool(model_name_for(Role.EMBEDDING))
 
 
 async def embed(text: str) -> list[float] | None:

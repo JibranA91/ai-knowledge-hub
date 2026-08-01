@@ -26,6 +26,10 @@ from typing import AsyncIterator, Protocol, runtime_checkable
 Message = dict
 
 
+class UnknownModelError(ValueError):
+    """A configured model name isn't one the active provider can serve."""
+
+
 @runtime_checkable
 class ChatModel(Protocol):
     """A LangChain-compatible chat runnable, used by the LangGraph agents.
@@ -76,6 +80,22 @@ class Provider(Protocol):
     """Factory for a single vendor's clients."""
 
     name: str
+
+    def resolve_model(self, name: str) -> str:
+        """Map a friendly model name (e.g. "haiku45") to this vendor's concrete
+        model ID.
+
+        Names are provider-neutral; each provider maps the ones it can serve and
+        raises `UnknownModelError` for the rest — a name that exists on one
+        vendor need not exist on another. Anything that isn't a known name is
+        passed through unchanged, so a raw vendor model ID always works as an
+        escape hatch.
+        """
+        ...
+
+    def known_models(self) -> list[str]:
+        """The friendly names this provider can resolve, for error messages."""
+        ...
 
     def chat_model(self, model_id: str, max_tokens: int) -> ChatModel:
         """Build a LangChain chat runnable for *model_id*."""
