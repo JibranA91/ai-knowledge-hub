@@ -4,10 +4,9 @@ Exercises the real `_HYBRID_SEARCH` SQL in `wiki_db.find_relevant_pages`
 against Postgres — the unit tests mock the DB session and the route tests mock
 `_find_relevant_pages`, so this is the only coverage of the actual query.
 
-Requires the pgvector extension (the `wiki_pages.embedding` column). The
-testcontainers image `postgres:16-alpine` does NOT ship pgvector, so these
-tests skip there and only run against a pgvector-enabled Postgres (the local
-dev container, or a CI service image with the extension).
+Requires the pgvector extension (the `wiki_pages.embedding` column). Both the
+integration testcontainer and CI service use `pgvector/pgvector:pg16`.
+A missing embedding column is a setup failure, not a reason to skip coverage.
 """
 import math
 
@@ -38,14 +37,16 @@ async def _embedding_column_present(test_engine) -> bool:
 
 @pytest_asyncio.fixture
 async def require_pgvector(test_engine):
-    """Skip unless the embedding column exists, and reset wiki_db's cached flag.
+    """Require the embedding column, and reset wiki_db's cached flag.
 
     `_embedding_col_ready` is a module-global set on first use; a prior test (or
     a prior run against a non-pgvector DB) may have cached False, so we force a
     re-check against this DB.
     """
-    if not await _embedding_column_present(test_engine):
-        pytest.skip("pgvector / wiki_pages.embedding not available in this Postgres")
+    assert await _embedding_column_present(test_engine), (
+        "Integration tests require pgvector and wiki_pages.embedding. "
+        "Use pgvector/pgvector:pg16 and run migrations on a fresh test database."
+    )
     wiki_db._embedding_col_ready = None
     yield
     wiki_db._embedding_col_ready = None

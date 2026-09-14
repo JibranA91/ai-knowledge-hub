@@ -1158,7 +1158,7 @@ All LLM, AWS, and database calls are mocked — no credentials or running servic
 pytest tests/integration -v
 ```
 
-Uses **testcontainers** to spin up a throwaway PostgreSQL 16 container and applies Alembic migrations automatically. Docker must be running. **324 tests** across 21 modules exercise the full HTTP API surface:
+Uses **testcontainers** to spin up a throwaway PostgreSQL 16 container with pgvector (`pgvector/pgvector:pg16`) and applies Alembic migrations automatically. Docker must be running. CI uses the same image for its integration database. Hybrid-search tests require the embedding column and fail if it is missing rather than skipping. If `DATABASE_URL` is explicitly set, it must point to a disposable test database with pgvector available: the fixtures clear its tables. The suite exercises the full HTTP API surface:
 
 - `test_routes_auth.py` — login, logout, JWT refresh, 401 flows, `/health`
 - `test_routes_wiki.py` — wiki tree, full-text search, page CRUD
