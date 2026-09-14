@@ -17,4 +17,5 @@ venv/
 .ipynb_checkpoints/
 *.ipynb
 CLAUDE.md
+/AGENTS.md
 .coverage*
