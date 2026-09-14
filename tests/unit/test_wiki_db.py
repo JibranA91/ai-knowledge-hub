@@ -115,7 +115,9 @@ async def test_semantic_search_returns_empty_when_column_absent():
 
 
 @pytest.mark.asyncio
-async def test_semantic_search_returns_ranked_pages():
+async def test_semantic_search_returns_ranked_pages(monkeypatch):
+    from app import model
+    monkeypatch.setattr(model.settings, "MODEL_EMBEDDING", "titanembedv1")
     from app.services.wiki_db import semantic_search_wiki
 
     rows = [
@@ -128,7 +130,7 @@ async def test_semantic_search_returns_ranked_pages():
          patch("app.services.wiki_db.get_org_id", return_value="org-1"), \
          patch("app.services.wiki_db.get_db", get_db), \
          patch("app.services.embeddings.vec_to_pg", return_value="[0.1]"):
-        results = await semantic_search_wiki([0.1] * 10, top_k=5)
+        results = await semantic_search_wiki([0.1] * 1536, top_k=5)
 
     assert len(results) == 2
     assert results[0]["path"] == "concepts/a.md"

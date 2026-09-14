@@ -348,33 +348,43 @@ Wiki pages are mirrored into a PostgreSQL `wiki_pages` table with a `tsvector GE
 
 ### Semantic embeddings
 
-**Hybrid search is on by default.** `BEDROCK_EMBEDDING_MODEL_ID` defaults to `amazon.titan-embed-text-v1` (1536-dim), so retrieval combines **BM25 (weight 0.4) + cosine similarity (weight 0.6)** out of the box. `GET /api/auth/config` reports `embedding_enabled: true`.
+`MODEL_EMBEDDING=titanembedv1` enables 1536-dimensional embeddings when pgvector
+is available. Set `MODEL_EMBEDDING=` to disable embedding calls and use keyword
+search. An explicitly empty legacy `BEDROCK_EMBEDDING_MODEL_ID` is also preserved
+on upgrade unless a new `MODEL_EMBEDDING` value is explicitly configured.
 
-While enabled (the default):
-- Every page write generates and stores a `vector(1536)` embedding in the `wiki_pages` table (via an `IVFFlat` index for approximate nearest-neighbour search).
-- `_find_relevant_pages()` in the query/chat pipeline uses the hybrid SQL query instead of an LLM index scan — eliminating one Bedrock call per user question.
-- A query with no keyword overlap with the answer (e.g. "distributed coordination" matching a page titled "pg_advisory_xact_lock") is still found through vector similarity.
+The database currently stores `vector(1536)`. Changing `EMBEDDING_DIMENSIONS`
+does not resize that column. Startup rejects incompatible known models and
+dimensions. Titan V1 was verified through the provider with a live Bedrock request.
+Cohere Embed V4 can also produce 1536 dimensions, but the current response parser
+does not handle its typed embedding response; do not select it until that is fixed.
+Dimension validation alone does not establish runtime compatibility. Titan V2
+(256/512/1024) and Cohere Embed V3 (1024) require a separate storage migration
+before they can be used here. See [AWS's Titan documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/titan-embedding-models.html)
+and [Cohere Embed V4 documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-embed-v4.html).
 
-**To disable vector search** — BM25-only, no Bedrock embedding calls, no pgvector queries — set the variable to empty:
+Each new vector records its provider, resolved model ID and dimensions. Search
+compares vectors only when that identity matches the current model. Compatible
+pages use keyword/cosine weights of 0.4/0.6; pages without compatible vectors
+retain keyword-only scoring. A failed embedding during an edit invalidates the
+old vector's identity so stale content is not used for semantic matching.
 
-```env
-BEDROCK_EMBEDDING_MODEL_ID=
-```
+**Upgrade and model changes:** migration 028 leaves existing vectors untagged,
+because their originating model cannot be inferred safely. Those pages remain
+available to keyword search. They acquire current vectors on their next rewrite
+or re-ingestion. This update does not automatically call a model to re-embed the
+corpus. For full semantic coverage after a model change, re-ingest the affected
+sources. Models with equal dimensions can still have incompatible vector spaces.
 
-With embeddings off, the system uses BM25 and falls back to the LLM-based index scan when BM25 returns no results. To switch models instead, set both the model id and its dimension count:
+Exports include vectors only for the current embedding identity. Imports reuse
+vectors only when provider, model, identity, dimensions and vector contents are
+valid; old bundles without identity metadata still import their pages, but
+regenerate vectors when embeddings are enabled.
 
-```env
-BEDROCK_EMBEDDING_MODEL_ID=amazon.titan-embed-text-v2:0
-EMBEDDING_DIMENSIONS=1536
-```
-
-Supported models:
-| Model ID | Dimensions |
-|---|---|
-| `amazon.titan-embed-text-v1` | 1536 (default) |
-| `amazon.titan-embed-text-v2:0` | 1536 |
-| `cohere.embed-english-v3` | 1024 — set `EMBEDDING_DIMENSIONS=1024` |
-| `cohere.embed-multilingual-v3` | 1024 — set `EMBEDDING_DIMENSIONS=1024` |
+Startup validates known model capabilities locally, not account access or
+regional availability. Raw model IDs not in the catalogue remain an escape
+hatch and log a warning when their capabilities cannot be checked locally.
+Malformed runtime vectors fall back to keyword search instead of reaching SQL.
 
 ### Paginated wiki listing
 

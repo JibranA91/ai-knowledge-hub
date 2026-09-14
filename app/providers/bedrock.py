@@ -78,7 +78,7 @@ MODEL_CATALOG: dict[str, _Entry] = {
     "llama4maverick": _Entry("meta.llama4-maverick-17b-instruct-v1:0", _US),
     "llama4scout":    _Entry("meta.llama4-scout-17b-instruct-v1:0", _US),
     # ── Embeddings (foundation models — no inference profile) ──────────────
-    "titanembedv2":   _Entry("amazon.titan-embed-text-v2:0", None),   # 1536 dims
+    "titanembedv2":   _Entry("amazon.titan-embed-text-v2:0", None),   # 1024, 512 or 256 dims
     "titanembedv1":   _Entry("amazon.titan-embed-text-v1", None),     # 1536 dims
     "cohereembedv4":  _Entry("cohere.embed-v4:0", None),
     "cohereembeden":  _Entry("cohere.embed-english-v3", None),        # 1024 dims
@@ -209,6 +209,7 @@ class BedrockConverseClient:
             loop = asyncio.get_event_loop()
 
             def _stream():
+                event_stream = None
                 try:
                     if settings.ASSUMED_ROLE_ARN:
                         self.client = self._make_client()
@@ -218,7 +219,8 @@ class BedrockConverseClient:
                         messages=messages,
                         inferenceConfig={"maxTokens": max_tokens, "temperature": 0.3},
                     )
-                    for event in response.get("stream", []):
+                    event_stream = response.get("stream", [])
+                    for event in event_stream:
                         if stop.is_set():
                             break  # consumer disconnected — stop consuming Bedrock
                         if "contentBlockDelta" in event:
@@ -227,8 +229,15 @@ class BedrockConverseClient:
                                 loop.call_soon_threadsafe(queue.put_nowait, delta["text"])
                         elif "metadata" in event:
                             usage_holder.update(event["metadata"].get("usage", {}))
+                        elif any(key.endswith("Exception") for key in event):
+                            raise RuntimeError(f"Bedrock streaming error: {event}")
                 finally:
-                    loop.call_soon_threadsafe(queue.put_nowait, None)
+                    try:
+                        close = getattr(event_stream, "close", None)
+                        if close:
+                            close()
+                    finally:
+                        loop.call_soon_threadsafe(queue.put_nowait, None)
 
             task = loop.run_in_executor(None, _stream)
             try:
@@ -237,14 +246,19 @@ class BedrockConverseClient:
                     if chunk is None:
                         break
                     yield chunk
+                # Propagate producer failures on normal consumption, including
+                # failures after partial output, before callers emit 'done'.
+                await asyncio.shield(task)
             finally:
                 # On normal completion this is a no-op; on GeneratorExit/cancel it
                 # signals the worker to stop and reclaims the thread instead of
                 # leaking it (and the semaphore slot) until Bedrock finishes.
                 stop.set()
                 try:
-                    await task
+                    await asyncio.shield(task)
                 except Exception:
+                    # The normal path above already raised. Cleanup must not
+                    # replace GeneratorExit / cancellation with a worker error.
                     pass
         if usage_holder:
             await usage.record(
@@ -324,6 +338,28 @@ class BedrockProvider:
 
     def known_models(self) -> list[str]:
         return sorted(MODEL_CATALOG)
+
+    def validate_model(self, model_id: str, *, embedding: bool, dimensions: int) -> None:
+        base_id = model_id
+        if base_id.split(".", 1)[0] in {"us", "eu", "apac", "global"}:
+            base_id = base_id.split(".", 1)[1]
+        entry = next((e for e in MODEL_CATALOG.values() if e.model_id == base_id), None)
+        if entry is None:
+            log.warning("Model capabilities cannot be checked locally for raw ID %s", model_id)
+            return
+        is_embedding = entry.geos is None
+        if embedding != is_embedding:
+            raise UnknownModelError(f"{model_id} is not a {'text embedding' if embedding else 'chat'} model")
+        if embedding:
+            supported = {
+                "amazon.titan-embed-text-v1": {1536},
+                "amazon.titan-embed-text-v2:0": {256, 512, 1024},
+                "cohere.embed-english-v3": {1024},
+                "cohere.embed-multilingual-v3": {1024},
+                "cohere.embed-v4:0": {256, 512, 1024, 1536},
+            }[base_id]
+            if dimensions not in supported:
+                raise UnknownModelError(f"{model_id} cannot produce the {dimensions} dimensions required by the database")
 
     def chat_model(self, model_id: str, max_tokens: int = 4096):
         """Create a ChatBedrockConverse runnable (untracked — `app.model` wraps it)."""

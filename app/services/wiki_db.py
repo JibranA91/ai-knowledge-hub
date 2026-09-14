@@ -11,6 +11,7 @@ import re
 
 import sqlalchemy as sa
 
+from app import model
 from app.context import get_org_id
 
 
@@ -74,16 +75,17 @@ _UPSERT = sa.text("""
         frontmatter   = EXCLUDED.frontmatter,
         ingested_from = EXCLUDED.ingested_from,
         s3_key        = EXCLUDED.s3_key,
+        embedding_space = NULL,
         updated_at    = NOW()
 """)
 
 # Phase 5: upsert that also stores a precomputed embedding vector (as string literal).
 # The :embedding parameter must be a pgvector literal string '[f1,f2,...]' or NULL.
 _UPSERT_WITH_EMBEDDING = sa.text("""
-    INSERT INTO wiki_pages (org_id, path, title, tags, summary, content, frontmatter, ingested_from, s3_key, embedding)
+    INSERT INTO wiki_pages (org_id, path, title, tags, summary, content, frontmatter, ingested_from, s3_key, embedding, embedding_space)
     VALUES (CAST(:org_id AS UUID), :path, :title, CAST(:tags AS JSONB), :summary, :content,
             CAST(:frontmatter AS JSONB), :ingested_from, :s3_key,
-            CAST(:embedding AS vector))
+            CAST(:embedding AS vector), :embedding_space)
     ON CONFLICT (org_id, path) DO UPDATE SET
         title         = EXCLUDED.title,
         tags          = EXCLUDED.tags,
@@ -93,6 +95,7 @@ _UPSERT_WITH_EMBEDDING = sa.text("""
         ingested_from = EXCLUDED.ingested_from,
         s3_key        = EXCLUDED.s3_key,
         embedding     = EXCLUDED.embedding,
+        embedding_space = EXCLUDED.embedding_space,
         updated_at    = NOW()
 """)
 
@@ -147,19 +150,23 @@ _SEARCH = sa.text("""
 #
 # Only pages scoring above min_score (default 0.45) are returned so that low-relevance
 # pages don't inflate the LLM context. Pages with NULL embeddings (ingested before
-# pgvector was enabled) contribute only the normalized BM25 score via COALESCE.
+# pgvector was enabled) or from another model use full keyword-only scoring.
 _HYBRID_SEARCH = sa.text("""
     WITH base AS (
         SELECT path,
                ts_rank(search_vector, plainto_tsquery('english', :q)) AS bm25_raw,
-               COALESCE(1.0 - (embedding <=> CAST(:embedding AS vector)), 0.0) AS cosine
+               (embedding IS NOT NULL AND embedding_space = :embedding_space) IS TRUE AS compatible,
+               CASE WHEN embedding_space = :embedding_space
+                    THEN COALESCE(1.0 - (embedding <=> CAST(:embedding AS vector)), 0.0)
+                    ELSE 0.0 END AS cosine
         FROM wiki_pages
         WHERE org_id = CAST(:org_id AS UUID)
         AND path NOT IN ('index.md', 'log.md')
     ),
     scored AS (
         SELECT path,
-               COALESCE(bm25_raw / NULLIF(MAX(bm25_raw) OVER (), 0), 0.0) * 0.4
+               COALESCE(bm25_raw / NULLIF(MAX(bm25_raw) OVER (), 0), 0.0)
+               * CASE WHEN compatible THEN 0.4 ELSE 1.0 END
                + cosine * 0.6
                 AS score
         FROM base
@@ -200,6 +207,7 @@ _VECTOR_SEARCH = sa.text("""
     FROM wiki_pages
     WHERE org_id = CAST(:org_id AS UUID)
       AND embedding IS NOT NULL
+      AND embedding_space = :embedding_space
     ORDER BY embedding <=> CAST(:embedding AS vector)
     LIMIT :top_k
 """)
@@ -242,8 +250,9 @@ async def upsert_wiki_page(path: str, content: str, ingested_from: str = "",
     """Upsert a wiki page. When embedding is enabled AND the column exists, stores a vector.
 
     A caller-supplied `embedding` (e.g. a wiki import reusing exported vectors)
-    is stored as-is and skips the embed call. Otherwise a vector is generated
-    when embeddings are enabled.
+    must be validated for model compatibility by the importer; this helper
+    checks vector shape and stamps current provenance. Otherwise a vector is
+    generated when embeddings are enabled.
 
     Emits a `wiki_revisions` row if a tracked action is open in the current
     context (see `app.services.wiki_state`).
@@ -257,7 +266,9 @@ async def upsert_wiki_page(path: str, content: str, ingested_from: str = "",
     from app.services import embeddings
     embedding_vec: list[float] | None = None
     has_col = await _embedding_col_exists()
-    if embedding is not None and has_col:
+    if embedding is not None and not model.valid_embedding(embedding):
+        raise ValueError("Supplied embedding must be a finite, nonzero 1536-dimensional vector")
+    if embedding is not None and has_col and embeddings.is_enabled():
         embedding_vec = embedding  # reuse caller-supplied vector (import path)
         log.debug("upsert_wiki_page | path=%s | embedding=reused | dims=%d", path, len(embedding))
     elif embeddings.is_enabled() and has_col:
@@ -269,6 +280,10 @@ async def upsert_wiki_page(path: str, content: str, ingested_from: str = "",
             log.warning("upsert_wiki_page | path=%s | embedding=failed (embed_text returned None)", path)
     else:
         log.debug("upsert_wiki_page | path=%s | embedding=disabled", path)
+
+    if embedding_vec is not None and not model.valid_embedding(embedding_vec):
+        log.warning("upsert_wiki_page | invalid embedding discarded | path=%s", path)
+        embedding_vec = None
 
     base_params = {
         "org_id": org_id,
@@ -288,6 +303,7 @@ async def upsert_wiki_page(path: str, content: str, ingested_from: str = "",
             await db.execute(_UPSERT_WITH_EMBEDDING, {
                 **base_params,
                 "embedding": embeddings.vec_to_pg(embedding_vec),
+                "embedding_space": model.embedding_identity(),
             })
             log.debug("upsert_wiki_page | path=%s | stored with embedding", path)
         else:
@@ -368,12 +384,15 @@ async def semantic_search_wiki(query_vec: list[float], top_k: int = 8) -> list[d
     """
     if not await _embedding_col_exists():
         return []
+    if not model.valid_embedding(query_vec) or not model.embedding_enabled():
+        return []
     from app.services import embeddings
     org_id = get_org_id()
     async with get_db() as db:
         result = await db.execute(_VECTOR_SEARCH, {
             "org_id": org_id,
             "embedding": embeddings.vec_to_pg(query_vec),
+            "embedding_space": model.embedding_identity(),
             "top_k": top_k,
         })
         rows = result.fetchall()
@@ -391,7 +410,9 @@ _EXPORT_NO_EMBEDDINGS = sa.text("""
 """)
 
 _EXPORT_WITH_EMBEDDINGS = sa.text("""
-    SELECT path, content, embedding::text AS embedding_str
+    SELECT path, content,
+           CASE WHEN embedding_space = :embedding_space
+                THEN embedding::text ELSE NULL END AS embedding_str
     FROM wiki_pages
     WHERE org_id = CAST(:org_id AS UUID)
     ORDER BY path
@@ -405,7 +426,9 @@ async def list_wiki_pages_for_export(include_embeddings: bool) -> list[dict]:
 
     async with get_db() as db:
         if has_emb_col:
-            result = await db.execute(_EXPORT_WITH_EMBEDDINGS, {"org_id": org_id})
+            result = await db.execute(_EXPORT_WITH_EMBEDDINGS, {
+                "org_id": org_id, "embedding_space": model.embedding_identity(),
+            })
         else:
             result = await db.execute(_EXPORT_NO_EMBEDDINGS, {"org_id": org_id})
         rows = result.fetchall()
@@ -495,12 +518,13 @@ async def find_relevant_pages(question: str, limit: int = 8) -> list[str]:
     if embeddings.is_enabled() and await _embedding_col_exists():
         log.debug("find_relevant_pages | mode=hybrid | q=%r", q_short)
         vec = await embeddings.embed_text(question)
-        if vec is not None:
+        if vec is not None and model.valid_embedding(vec):
             async with get_db() as db:
                 result = await db.execute(_HYBRID_SEARCH, {
                     "org_id": org_id,
                     "q": question,
                     "embedding": embeddings.vec_to_pg(vec),
+                    "embedding_space": model.embedding_identity(),
                     "limit": limit,
                     "min_score": 0.45,
                 })
