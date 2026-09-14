@@ -617,9 +617,14 @@ Include at most 8 pages. Only include paths that appear in the index."""
         yield f"data: {_json.dumps({'type': 'meta', 'session_id': session.session_id, 'sources': relevant})}\n\n"
 
         answer_parts: list[str] = []
-        async for chunk in self.query_bedrock.converse_stream(system_prompt, api_msgs, max_tokens=4096, operation="chat_stream"):
-            answer_parts.append(chunk)
-            yield f"data: {_json.dumps({'type': 'chunk', 'text': chunk})}\n\n"
+        try:
+            async for chunk in self.query_bedrock.converse_stream(system_prompt, api_msgs, max_tokens=4096, operation="chat_stream"):
+                answer_parts.append(chunk)
+                yield f"data: {_json.dumps({'type': 'chunk', 'text': chunk})}\n\n"
+        except Exception:
+            log.exception("chat_stream | generation failed")
+            yield f"data: {_json.dumps({'type': 'error', 'message': 'Generation was interrupted. Please retry.'})}\n\n"
+            return
 
         answer = "".join(answer_parts)
 
@@ -750,6 +755,8 @@ Do NOT score the wiki. Return ONLY JSON:
             "has_embeddings": has_embeddings,
             "embedding_dimensions": settings.EMBEDDING_DIMENSIONS,
             "embedding_model": model.model_id_for(model.Role.EMBEDDING),
+            "embedding_provider": model.provider_name(),
+            "embedding_space": model.embedding_identity(),
         }
 
         buf = io.BytesIO()
@@ -844,15 +851,19 @@ Do NOT score the wiki. Return ONLY JSON:
         full_assistant_text: list[str] = []
         section_errors: list[str] = []
 
-        async for chunk in self.draft_agent_bedrock.converse_stream(
-            system_prompt, api_msgs, max_tokens=4096, operation="writer_chat"
-        ):
-            full_assistant_text.append(chunk)
-            for evt in parser.feed(chunk):
-                # Filter out internal `_done` events here; we'll handle them after stream
-                if evt["type"] in ("draft_done", "section_done"):
-                    continue
-                yield f"data: {_json.dumps(evt)}\n\n"
+        try:
+            async for chunk in self.draft_agent_bedrock.converse_stream(
+                system_prompt, api_msgs, max_tokens=4096, operation="writer_chat"
+            ):
+                full_assistant_text.append(chunk)
+                for evt in parser.feed(chunk):
+                    if evt["type"] in ("draft_done", "section_done"):
+                        continue
+                    yield f"data: {_json.dumps(evt)}\n\n"
+        except Exception:
+            log.exception("writer_chat_stream | generation failed")
+            yield f"data: {_json.dumps({'type': 'error', 'message': 'Generation was interrupted. Your saved draft is unchanged. Please retry.'})}\n\n"
+            return
         for evt in parser.flush():
             yield f"data: {_json.dumps(evt)}\n\n"
 

@@ -34,6 +34,8 @@ Adding a provider: implement `app/providers/base.Provider`, register it in
 `app/providers/__init__.py`, set LLM_PROVIDER. No call site changes.
 """
 import asyncio
+import json
+import math
 from enum import StrEnum
 
 from app import providers
@@ -43,6 +45,9 @@ from app.providers.base import UnknownModelError
 from app.providers.usage import TrackedChat
 
 log = get_logger(__name__)
+
+# Matches wiki_pages.embedding vector(1536); changing settings cannot resize it.
+EMBEDDING_STORAGE_DIMENSIONS = 1536
 
 
 class Role(StrEnum):
@@ -85,14 +90,22 @@ def validate_configuration() -> dict[Role, str]:
     """
     resolved: dict[Role, str] = {}
     problems: list[str] = []
+    provider = _provider()
     for role in Role:
         name = model_name_for(role)
         if not name:
-            continue  # optional role (e.g. embeddings) left unset
+            if role != Role.EMBEDDING:
+                problems.append(f"  {role.value}: {_ROLE_SETTING[role]} must not be empty")
+            continue
         try:
-            resolved[role] = _provider().resolve_model(name)
+            resolved[role] = provider.resolve_model(name)
+            provider.validate_model(resolved[role], embedding=role == Role.EMBEDDING,
+                                    dimensions=EMBEDDING_STORAGE_DIMENSIONS)
         except UnknownModelError as exc:
             problems.append(f"  {role.value}: {exc}")
+    if embedding_enabled() and settings.EMBEDDING_DIMENSIONS != EMBEDDING_STORAGE_DIMENSIONS:
+        problems.append("  embedding: the database requires 1536 dimensions; changing "
+                        "EMBEDDING_DIMENSIONS alone does not migrate stored vectors")
     if problems:
         raise UnknownModelError(
             f"Invalid model configuration for provider {provider_name()!r}:\n"
@@ -128,6 +141,8 @@ def model_id_for(role: Role) -> str:
     """
     name = model_name_for(role)
     if not name:
+        if Role(role) != Role.EMBEDDING:
+            raise UnknownModelError(f"role {Role(role).value!r}: model must not be empty")
         return ""
     try:
         return _provider().resolve_model(name)
@@ -168,6 +183,24 @@ def embedding_enabled() -> bool:
     return bool(model_name_for(Role.EMBEDDING))
 
 
+def embedding_identity() -> str:
+    """Identify comparable vectors by provider, resolved model and storage size."""
+    if not embedding_enabled():
+        return ""
+    return json.dumps([provider_name(), model_id_for(Role.EMBEDDING),
+                       EMBEDDING_STORAGE_DIMENSIONS], separators=(",", ":"))
+
+
+def valid_embedding(vector) -> bool:
+    """Only finite, nonzero vectors of the database's fixed size are usable."""
+    return (
+        isinstance(vector, list) and len(vector) == EMBEDDING_STORAGE_DIMENSIONS
+        and all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                and math.isfinite(v) and abs(v) <= 3.4028235e38 for v in vector)
+        and any(abs(v) >= 1e-8 for v in vector)
+    )
+
+
 async def embed(text: str) -> list[float] | None:
     """Embed *text*, or return None if embeddings are disabled or the call fails.
 
@@ -175,9 +208,12 @@ async def embed(text: str) -> list[float] | None:
     """
     if not embedding_enabled():
         return None
-    model_id = model_id_for(Role.EMBEDDING)
     try:
-        return await asyncio.to_thread(_provider().embed_sync, model_id, text)
+        model_id = model_id_for(Role.EMBEDDING)
+        vec = await asyncio.to_thread(_provider().embed_sync, model_id, text)
+        if not valid_embedding(vec):
+            raise ValueError("Embedding must be a finite, nonzero 1536-dimensional vector")
+        return vec
     except Exception as exc:
-        log.warning("embed | failed (returning None) | model=%s: %s", model_id, exc)
+        log.warning("embed | failed (returning None) | model=%s: %s", model_name_for(Role.EMBEDDING), exc)
         return None

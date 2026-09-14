@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     # instruction. Single-shot, no reasoning loop.
     MODEL_EDIT: str = "sonnet45"
     # Optional semantic embeddings. Leave empty to disable vector search.
-    # Recommended: titanembedv2 (1536-dim) or cohereembeden (1024-dim).
+    # Storage currently requires 1536 dimensions (e.g. titanembedv1).
     MODEL_EMBEDDING: str = "titanembedv1"
 
     # Cross-region inference profile geography for Bedrock text models: "us",
@@ -157,7 +157,8 @@ class Settings(BaseSettings):
         # non-empty" are different questions.
         for legacy, current in LEGACY_MODEL_VARS.items():
             value = getattr(self, legacy, "")
-            if value and current not in self.model_fields_set:
+            explicitly_disabled = legacy == "BEDROCK_EMBEDDING_MODEL_ID" and legacy in self.model_fields_set
+            if (value or explicitly_disabled) and current not in self.model_fields_set:
                 object.__setattr__(self, current, value)
 
         # Refuse to boot in production while security-sensitive settings are

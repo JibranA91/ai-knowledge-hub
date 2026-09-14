@@ -30,6 +30,9 @@ class _FakeProvider:
     def known_models(self):
         return sorted(self.CATALOG)
 
+    def validate_model(self, model_id, *, embedding, dimensions):
+        pass
+
     def chat_model(self, model_id, max_tokens=4096):
         self.chat_calls.append((model_id, max_tokens))
         return MagicMock()
@@ -42,7 +45,7 @@ class _FakeProvider:
 
     def embed_sync(self, model_id, text):
         self.embed_calls.append((model_id, text))
-        return [0.5, 0.5]
+        return [0.5] * 1536
 
 
 @pytest.fixture
@@ -112,6 +115,7 @@ def test_validate_configuration_resolves_every_configured_role(fake_provider):
     with patch("app.model.settings") as s:
         for setting in model._ROLE_SETTING.values():
             setattr(s, setting, "fastmodel")
+        s.EMBEDDING_DIMENSIONS = 1536
         resolved = model.validate_configuration()
     assert set(resolved) == set(model.Role)
     assert set(resolved.values()) == {"fake.fast-v1"}
@@ -206,7 +210,7 @@ async def test_embed_delegates_to_provider(fake_provider):
     with patch("app.model.settings") as s:
         s.MODEL_EMBEDDING = "embed.model"
         vec = await model.embed("hi")
-    assert vec == [0.5, 0.5]
+    assert vec == [0.5] * 1536
     assert fake_provider.embed_calls == [("embed.model", "hi")]
 
 

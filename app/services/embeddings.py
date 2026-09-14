@@ -7,10 +7,8 @@ formatting used by wiki_db.
 If an embedding model is configured, embed_text() returns a float vector.
 Otherwise it returns None and all callers fall back to BM25-only search.
 
-Supported models (set via BEDROCK_EMBEDDING_MODEL_ID):
-  amazon.titan-embed-text-v2:0          — 1536 dims (default, recommended)
-  cohere.embed-english-v3               — 1024 dims (set EMBEDDING_DIMENSIONS=1024)
-  cohere.embed-multilingual-v3          — 1024 dims
+Set MODEL_EMBEDDING to a model compatible with the database's 1536 dimensions
+(e.g. titanembedv1). Changing EMBEDDING_DIMENSIONS alone cannot resize storage.
 """
 from app import model
 from app.logger import get_logger

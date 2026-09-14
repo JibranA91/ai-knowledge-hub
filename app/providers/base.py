@@ -97,6 +97,14 @@ class Provider(Protocol):
         """The friendly names this provider can resolve, for error messages."""
         ...
 
+    def validate_model(self, model_id: str, *, embedding: bool, dimensions: int) -> None:
+        """Reject known capability/dimension mismatches without opening a client.
+
+        Unknown raw IDs may defer capability checks to the vendor. Implementations
+        should warn when they cannot validate them locally.
+        """
+        ...
+
     def chat_model(self, model_id: str, max_tokens: int) -> ChatModel:
         """Build a LangChain chat runnable for *model_id*."""
         ...
