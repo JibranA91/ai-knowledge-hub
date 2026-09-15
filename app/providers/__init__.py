@@ -4,9 +4,8 @@ Every outbound connection to an LLM vendor is created inside this package and
 nowhere else. Application code imports `app.model`, never a provider directly.
 
 Adding a provider:
-    from app.providers.openai import OpenAIProvider
-    PROVIDERS["openai"] = OpenAIProvider
-…then set LLM_PROVIDER=openai. See `app/providers/base.py` for the contract.
+    _PROVIDER_MODULES["new_provider"] = ("app.providers.new_provider", "NewProvider")
+…then set LLM_PROVIDER=new_provider. See `app/providers/base.py` for the contract.
 """
 from functools import lru_cache
 

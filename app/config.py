@@ -1,3 +1,6 @@
+from urllib.parse import urlsplit
+
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings
 
 # Legacy raw-model-ID var → the MODEL_* name var that replaced it. Applied in
@@ -21,6 +24,10 @@ class Settings(BaseSettings):
     # in the codebase talks to an LLM vendor directly.
     # Registered providers: see app/providers/__init__.py.
     LLM_PROVIDER: str = "bedrock"
+    # Shared contract for future API-key/endpoint adapters; Bedrock uses AWS auth.
+    LLM_API_KEY: SecretStr = SecretStr("")
+    LLM_BASE_URL: str = ""
+    MODEL_DEFAULT: str = ""
 
     AWS_REGION: str = "us-east-1"
     AWS_ACCESS_KEY_ID: str = ""
@@ -143,6 +150,18 @@ class Settings(BaseSettings):
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
+    @field_validator("LLM_BASE_URL")
+    @classmethod
+    def validate_base_url(cls, value: str) -> str:
+        value = value.strip()
+        if value:
+            url = urlsplit(value)
+            if (url.scheme not in {"http", "https"} or not url.hostname
+                    or url.username is not None or url.password is not None
+                    or url.query or url.fragment):
+                raise ValueError("LLM_BASE_URL must be an HTTP(S) endpoint without credentials, query or fragment")
+        return value
+
     def model_post_init(self, __context) -> None:
         # BEDROCK_WRITER_MODEL_ID is older still — fold it into the var that
         # replaced it before the legacy promotion below runs.
@@ -160,6 +179,13 @@ class Settings(BaseSettings):
             explicitly_disabled = legacy == "BEDROCK_EMBEDDING_MODEL_ID" and legacy in self.model_fields_set
             if (value or explicitly_disabled) and current not in self.model_fields_set:
                 object.__setattr__(self, current, value)
+
+        # Explicit role settings (including legacy ones) outrank the shared default.
+        if self.MODEL_DEFAULT.strip():
+            for legacy, current in LEGACY_MODEL_VARS.items():
+                if (current != "MODEL_EMBEDDING" and current not in self.model_fields_set
+                        and not getattr(self, legacy, "")):
+                    object.__setattr__(self, current, self.MODEL_DEFAULT.strip())
 
         # Refuse to boot in production while security-sensitive settings are
         # left at their shipped defaults. These defaults are convenient for

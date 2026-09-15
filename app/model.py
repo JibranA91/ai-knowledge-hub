@@ -91,6 +91,8 @@ def validate_configuration() -> dict[Role, str]:
     resolved: dict[Role, str] = {}
     problems: list[str] = []
     provider = _provider()
+    if provider_name() == "bedrock" and (settings.LLM_API_KEY.get_secret_value() or settings.LLM_BASE_URL):
+        problems.append("  bedrock: use AWS credentials and AWS_REGION; leave LLM_API_KEY and LLM_BASE_URL empty")
     for role in Role:
         name = model_name_for(role)
         if not name:
@@ -162,7 +164,7 @@ def get_chat(role: Role, max_tokens: int = 4096, operation: str | None = None) -
     model_id = model_id_for(role)
     log.debug("get_chat | role=%s | model=%s | provider=%s", role, model_id, provider_name())
     runnable = _provider().chat_model(model_id, max_tokens=max_tokens)
-    return TrackedChat(runnable, model_id, operation or str(role))
+    return TrackedChat(runnable, model_id, str(role) if operation is None else operation)
 
 
 def get_converse(role: Role):

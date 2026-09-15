@@ -82,3 +82,52 @@ def test_promotion_map_covers_every_role():
     from app.model import Role, _ROLE_SETTING
     targets = set(LEGACY_MODEL_VARS.values())
     assert {_ROLE_SETTING[r] for r in Role} == targets
+
+
+def test_shared_default_applies_to_all_text_roles_only(monkeypatch):
+    s = _settings(monkeypatch, MODEL_DEFAULT=" sonnet45 ")
+    for current in LEGACY_MODEL_VARS.values():
+        assert getattr(s, current) == ("titanembedv1" if current == "MODEL_EMBEDDING" else "sonnet45")
+
+
+@pytest.mark.parametrize("default", ["", "  "])
+def test_empty_shared_default_preserves_previous_defaults(monkeypatch, default):
+    s = _settings(monkeypatch, MODEL_DEFAULT=default)
+    assert s.MODEL_QUERY == "haiku45"
+    assert s.MODEL_INGEST_WRITE == "llama4maverick"
+    assert s.MODEL_RECALIBRATE == "sonnet45"
+
+
+@pytest.mark.parametrize("override", ["haiku45", ""])
+def test_explicit_role_overrides_shared_default_even_when_empty(monkeypatch, override):
+    s = _settings(monkeypatch, MODEL_DEFAULT="sonnet45", MODEL_QUERY=override,
+                  BEDROCK_QUERY_MODEL_ID="legacy.model")
+    assert s.MODEL_QUERY == override
+
+
+@pytest.mark.parametrize("legacy,current", list(LEGACY_MODEL_VARS.items()))
+def test_legacy_model_overrides_shared_default(monkeypatch, legacy, current):
+    s = _settings(monkeypatch, MODEL_DEFAULT="sonnet45", **{legacy: "legacy.model"})
+    assert getattr(s, current) == "legacy.model"
+
+
+def test_oldest_writer_and_disabled_embeddings_survive_shared_default(monkeypatch):
+    s = _settings(monkeypatch, MODEL_DEFAULT="sonnet45", BEDROCK_WRITER_MODEL_ID="legacy.writer",
+                  BEDROCK_EMBEDDING_MODEL_ID="")
+    assert s.MODEL_INGEST_WRITE == "legacy.writer"
+    assert s.MODEL_EMBEDDING == ""
+
+
+def test_shared_connection_settings_mask_api_key(monkeypatch):
+    s = _settings(monkeypatch, LLM_API_KEY="private-test-key", LLM_BASE_URL="http://localhost:11434/v1")
+    assert s.LLM_API_KEY.get_secret_value() == "private-test-key"
+    assert "private-test-key" not in repr(s)
+    assert "private-test-key" not in s.model_dump_json()
+    assert s.LLM_BASE_URL == "http://localhost:11434/v1"
+
+
+@pytest.mark.parametrize("url", ["file:///tmp/model", "localhost:1234", "https://host/?key=secret",
+                                 "https://user:secret@host/v1", "https://host/#secret"])
+def test_shared_endpoint_rejects_unsafe_or_malformed_urls(monkeypatch, url):
+    with pytest.raises(ValueError, match="LLM_BASE_URL"):
+        _settings(monkeypatch, LLM_BASE_URL=url)
