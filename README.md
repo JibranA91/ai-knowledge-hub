@@ -9,8 +9,7 @@ AI Knowledge Hub is an AI-maintained internal wiki. Unlike a traditional documen
 ## Requirements
 
 - **Docker + Docker Compose** (recommended) — or Python 3.12+ with a PostgreSQL 16 instance for local dev.
-- **An AWS account with Bedrock access**, with the configured model IDs enabled in your region (see the `BEDROCK_*` variables in [Configuration](#configuration-reference)). All LLM work — planning, page writing, query, recalibration, and optional embeddings — runs through AWS Bedrock.
-  > **Note:** Bedrock is currently the only supported LLM provider. Multi-provider support (Anthropic API, OpenAI, local models) is on the roadmap — see the `BEDROCK_*` model IDs in [Configuration](#configuration-reference) for what's wired today.
+- **Model access:** either an AWS account with Bedrock access or a direct Anthropic API key. Select `LLM_PROVIDER=bedrock` or `anthropic`; see [direct Anthropic setup](#direct-anthropic-setup). Other providers are not implemented.
 - **Optional:** an AWS S3 bucket — only if you set `STORAGE_BACKEND=s3`. The default `local` backend stores raw uploads on a Docker volume and needs no S3.
 
 ---
@@ -111,7 +110,7 @@ The example environment keeps explicit recalibration/edit overrides; comment tho
 out too if you want every text role to use the shared default.
 
 `LLM_API_KEY` (masked in settings representations) and `LLM_BASE_URL` are shared
-settings for future adapters. They **do not enable a new provider** on their own.
+settings used by the direct Anthropic adapter and available for future adapters.
 Bedrock rejects non-empty values for them rather than silently ignoring them;
 continue to use AWS authentication and `AWS_REGION`. Endpoint URLs must be HTTP(S)
 and cannot contain embedded credentials, query strings, or fragments. Keep keys
@@ -186,7 +185,60 @@ Token usage is recorded centrally in [`app/providers/usage.py`](app/providers/us
 
 > **Upgrading:** the older `BEDROCK_*_MODEL_ID` variables still work — each is folded onto its `MODEL_*` replacement when that one isn't explicitly set — so an existing `.env` needs no changes. They're deprecated and will be removed; see the mapping at the bottom of [`.env.example`](.env.example).
 
-**Adding a provider** (OpenAI, Anthropic direct, Azure, Ollama, …):
+### Direct Anthropic setup
+
+The `anthropic` adapter supports the app's text responses, streaming and agent
+tool calls through the direct Messages API, not through Bedrock. It uses the
+official Anthropic SDK and LangChain integration.
+
+```dotenv
+LLM_PROVIDER=anthropic
+LLM_API_KEY=<your-direct-anthropic-api-key>
+LLM_BASE_URL=
+MODEL_DEFAULT=haiku45
+MODEL_EMBEDDING=
+```
+
+Remove/comment out inherited `MODEL_*` text-role overrides and legacy
+`BEDROCK_*_MODEL_ID` settings that you want the shared default to replace.
+Bedrock IDs such as `us.anthropic.…` are rejected, not automatically converted.
+The direct adapter maps `haiku45`, `sonnet45`, and `opus45` to explicit Claude 4.5
+snapshot IDs; direct `claude-*` IDs are also accepted with a warning that their
+capabilities are not locally verified. Account access and model availability
+must be checked live; selecting a listed name does not guarantee access.
+
+`LLM_BASE_URL` defaults to `https://api.anthropic.com`. Set it only for a trusted
+Anthropic-compatible gateway: it receives your key and prompts. Ambient
+`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, and `ANTHROPIC_BASE_URL` do not override
+the app's explicit settings. No AWS credentials are used for these model calls.
+With local storage, unused AWS role-refresh tasks are skipped. S3 storage still
+requires its own AWS configuration.
+
+Anthropic has no embedding API, so explicitly leave `MODEL_EMBEDDING=` blank.
+Keyword search remains available; this does not delete existing vectors. The
+current single-provider design cannot combine Anthropic chat with Bedrock
+embeddings. See [Anthropic's embeddings documentation](https://platform.claude.com/docs/en/build-with-claude/embeddings).
+
+Install updated dependencies or rebuild the container, then check the intended
+configuration before starting an ingest:
+
+```sh
+python -m app.check_models
+python -m app.check_models --live --yes
+```
+
+The live command sends synthetic prompts and may incur charges. SDK-backed tests
+use fake HTTP responses to verify request formats, tool calls, token accounting,
+retries, interrupted streams and cancellation; they do not establish live account
+access. Direct streams fail if the terminal event is missing and are never
+replayed after partial output. SDK retries are bounded to two retries before a
+response, with a 120-second request timeout; direct calls are limited to 20
+concurrent requests per model/process. Usage is recorded on completed calls,
+including cache-input tokens; interrupted calls can still be billed by Anthropic.
+Known Claude 4.5 snapshots use the app's sampling setting; unknown raw snapshots
+use provider sampling defaults to avoid sending unsupported parameters.
+
+**Adding another provider** (Azure, Ollama, etc.):
 
 1. Implement the `Provider` protocol from [`app/providers/base.py`](app/providers/base.py) in `app/providers/<name>.py`, including its own `resolve_model()` name catalogue.
 2. Register it in `app/providers/__init__.py`.

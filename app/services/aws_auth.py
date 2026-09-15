@@ -119,6 +119,8 @@ async def _refresh_loop():
 
 async def start_refresh_task():
     global _refresh_task
+    if settings.LLM_PROVIDER.strip().lower() != "bedrock" and settings.STORAGE_BACKEND == "local":
+        return  # Direct providers with local storage do not need AWS sessions.
     if not settings.ASSUMED_ROLE_ARN:
         return  # nothing to refresh
     if _refresh_task is None:

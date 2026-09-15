@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     # in the codebase talks to an LLM vendor directly.
     # Registered providers: see app/providers/__init__.py.
     LLM_PROVIDER: str = "bedrock"
-    # Shared contract for future API-key/endpoint adapters; Bedrock uses AWS auth.
+    # Direct API-key/endpoint adapters; Bedrock continues to use AWS auth.
     LLM_API_KEY: SecretStr = SecretStr("")
     LLM_BASE_URL: str = ""
     MODEL_DEFAULT: str = ""
