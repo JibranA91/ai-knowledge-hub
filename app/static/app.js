@@ -138,7 +138,9 @@ function renderMd(text) {
   if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
     return '<pre>' + escHtml(processed) + '</pre>';
   }
-  return DOMPurify.sanitize(marked.parse(processed));
+  const html = typeof renderMarkdownWithMath === 'function'
+    ? renderMarkdownWithMath(processed) : marked.parse(processed);
+  return DOMPurify.sanitize(html);
 }
 
 function escHtml(text) {
