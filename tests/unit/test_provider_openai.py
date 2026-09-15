@@ -9,7 +9,7 @@ import pytest
 from langchain_core.messages import HumanMessage, ToolMessage
 from pydantic import SecretStr
 
-from app import check_models, model, providers
+from app import check_models, model, model_catalog, providers
 from app.config import Settings
 from app.providers import openai as adapter
 from app.providers.base import Provider, UnknownModelError
@@ -112,16 +112,15 @@ def test_offline_validation_and_registration(settings, monkeypatch):
 
 
 @pytest.mark.parametrize("name,expected", [("GPT 4.1 Mini", "gpt-4.1-mini-2025-04-14"),
-    ("gpt41", "gpt-4.1-2025-04-14"), ("embed3large", "text-embedding-3-large"),
-    ("gpt-5-new-snapshot", "gpt-5-new-snapshot"), ("o3", "o3")])
+    ("gpt41", "gpt-4.1-2025-04-14"), ("embed3large", "text-embedding-3-large")])
 def test_resolves_models(settings, name, expected):
-    assert providers.get("openai").resolve_model(name) == expected
+    assert model_catalog.resolve(name, "openai") == expected
 
 
 @pytest.mark.parametrize("name", ["haiku45", "us.anthropic.claude-model", "titanembedv1", "https://host/gpt-test"])
 def test_rejects_other_provider_ids(settings, name):
     with pytest.raises(UnknownModelError):
-        providers.get("openai").resolve_model(name)
+        model_catalog.resolve(name, "openai")
 
 
 @pytest.mark.parametrize("field,value", [("MODEL_EMBEDDING", "gpt41mini"),
@@ -275,9 +274,13 @@ async def test_retry_policy(settings, transport, accounting, status, count):
 
 
 @pytest.mark.asyncio
-async def test_raw_reasoning_model_omits_sampling(settings, transport, accounting):
-    settings.MODEL_QUERY = "o3"
-    settings.MODEL_INGEST_WRITE = "o3"
+async def test_catalogue_reasoning_model_omits_sampling(settings, transport, accounting, monkeypatch):
+    entries = dict(model_catalog.load_catalog())
+    entries["testreasoning"] = model_catalog.ModelEntry(providers={"openai": model_catalog.Binding(
+        model_id="o3", capabilities={"chat", "tools", "converse", "stream"}, temperature=False)})
+    monkeypatch.setattr(model_catalog, "load_catalog", lambda: entries)
+    settings.MODEL_QUERY = "testreasoning"
+    settings.MODEL_INGEST_WRITE = "testreasoning"
     requests, _ = transport(lambda r: httpx.Response(200, json=response()))
     await model.get_converse(model.Role.QUERY).converse("sys", MESSAGES)
     await model.get_chat(model.Role.INGEST_WRITE).ainvoke([HumanMessage(content="hi")])

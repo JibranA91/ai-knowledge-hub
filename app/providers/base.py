@@ -7,7 +7,7 @@ To add a provider (OpenAI, Anthropic direct, Azure, Ollama, …):
 
   1. Create `app/providers/<name>.py` with a class implementing `Provider`.
   2. Register it in `app/providers/__init__.py::_PROVIDER_MODULES`.
-  3. Point `LLM_PROVIDER=<name>` at it and set the per-role model IDs.
+  3. Add model bindings in `app/model_catalog.yaml`, select LLM_PROVIDER and friendly names.
 
 API-key/endpoint adapters should use settings.LLM_API_KEY.get_secret_value()
 and settings.LLM_BASE_URL rather than adding vendor-specific duplicates.
@@ -89,27 +89,10 @@ class Provider(Protocol):
 
     name: str
 
-    def resolve_model(self, name: str) -> str:
-        """Map a friendly model name (e.g. "haiku45") to this vendor's concrete
-        model ID.
+    def validate_configuration(self) -> None:
+        """Check provider connection settings locally, without constructing clients.
 
-        Names are provider-neutral; each provider maps the ones it can serve and
-        raises `UnknownModelError` for the rest — a name that exists on one
-        vendor need not exist on another. Anything that isn't a known name is
-        passed through unchanged, so a raw vendor model ID always works as an
-        escape hatch.
-        """
-        ...
-
-    def known_models(self) -> list[str]:
-        """The friendly names this provider can resolve, for error messages."""
-        ...
-
-    def validate_model(self, model_id: str, *, embedding: bool, dimensions: int) -> None:
-        """Reject known capability/dimension mismatches without opening a client.
-
-        Unknown raw IDs may defer capability checks to the vendor. Implementations
-        should warn when they cannot validate them locally.
+        Model resolution and capability checks belong to app.model_catalog.
         """
         ...
 

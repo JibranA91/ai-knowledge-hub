@@ -167,3 +167,25 @@ def test_command_restores_logging_and_tracing(configured, monkeypatch):
     assert check_models.main([]) == 0
     assert os.environ["LANGSMITH_TRACING"] == "true"
     assert logging.root.manager.disable == previous
+
+
+@pytest.mark.parametrize("source", ["environment", "dotenv"])
+def test_cli_reports_obsolete_setting_at_import_without_disclosing_values(configured, tmp_path, source):
+    import os
+    from pathlib import Path
+    import subprocess
+    import sys
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
+    env["LLM_API_KEY"] = "private-current-key"
+    if source == "environment":
+        env["BEDROCK_QUERY_MODEL_ID"] = "private-obsolete-value"
+    else:
+        (tmp_path / ".env").write_text("BEDROCK_QUERY_MODEL_ID=private-obsolete-value\n", encoding="utf-8")
+    result = subprocess.run([sys.executable, "-m", "app.check_models"], cwd=tmp_path, env=env,
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 1
+    assert "BEDROCK_QUERY_MODEL_ID" in result.stdout
+    assert "MODEL_DEFAULT" in result.stdout
+    assert "private-" not in result.stdout + result.stderr

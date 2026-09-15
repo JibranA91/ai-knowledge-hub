@@ -13,21 +13,14 @@ from app.providers.bedrock import BedrockConverseClient
 def clean_settings(monkeypatch):
     for name in Settings.model_fields:
         monkeypatch.delenv(name, raising=False)
-    settings = Settings(_env_file=None)
+    settings = Settings(_env_file=None, MODEL_EMBEDDING="titanembedv1")
     monkeypatch.setattr(model, "settings", settings)
     monkeypatch.setattr("app.providers.bedrock.settings", settings)
     return settings
 
 
-def test_legacy_empty_embedding_setting_stays_disabled(clean_settings):
-    settings = Settings(_env_file=None, BEDROCK_EMBEDDING_MODEL_ID="")
-    assert settings.MODEL_EMBEDDING == ""
-
-
-def test_explicit_new_embedding_setting_wins_over_legacy_empty(clean_settings):
-    settings = Settings(_env_file=None, BEDROCK_EMBEDDING_MODEL_ID="",
-                        MODEL_EMBEDDING="titanembedv1")
-    assert settings.MODEL_EMBEDDING == "titanembedv1"
+def test_embeddings_default_to_disabled(clean_settings):
+    assert Settings(_env_file=None).MODEL_EMBEDDING == ""
 
 
 @pytest.mark.parametrize("role", [r for r in model.Role if r != model.Role.EMBEDDING])
@@ -39,7 +32,7 @@ def test_required_role_cannot_be_blank(clean_settings, role):
 
 @pytest.mark.parametrize("role,name", [
     (model.Role.QUERY, "titanembedv1"),
-    (model.Role.INGEST_PLAN, "amazon.titan-embed-text-v1"),
+    (model.Role.INGEST_PLAN, "titanembedv1"),
     (model.Role.EMBEDDING, "haiku45"),
 ])
 def test_rejects_model_with_wrong_capability(clean_settings, role, name):
@@ -123,21 +116,16 @@ async def test_stream_reports_request_and_in_band_errors(clean_settings, failure
 
 
 def test_embedding_identity_tracks_model_and_provider_not_alias(clean_settings):
+    import json
     original = model.embedding_identity()
-    clean_settings.MODEL_EMBEDDING = "amazon.titan-embed-text-v1"
+    clean_settings.MODEL_EMBEDDING = "Titan-Embed-v1"
     assert model.embedding_identity() == original
-    clean_settings.MODEL_EMBEDDING = "cohereembedv4"
+    clean_settings.LLM_PROVIDER = "openai"
+    clean_settings.MODEL_EMBEDDING = "embed3small"
+    assert json.loads(model.embedding_identity()) == ["openai", "text-embedding-3-small", 1536]
     assert model.embedding_identity() != original
-    provider = model._provider()
-    with patch.object(model, "provider_name", return_value="another-provider"), \
-         patch.object(model, "_provider", return_value=provider):
-        assert model.embedding_identity() != original
-
-
-def test_new_empty_embedding_setting_overrides_legacy_enabled(clean_settings):
-    settings = Settings(_env_file=None, MODEL_EMBEDDING="",
-                        BEDROCK_EMBEDDING_MODEL_ID="amazon.titan-embed-text-v1")
-    assert settings.MODEL_EMBEDDING == ""
+    clean_settings.MODEL_EMBEDDING = "embed3large"
+    assert json.loads(model.embedding_identity())[1] == "text-embedding-3-large"
 
 
 def test_default_configuration_is_valid(clean_settings):

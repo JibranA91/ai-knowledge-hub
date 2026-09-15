@@ -1,6 +1,5 @@
 """Direct Responses and embeddings APIs, with stateless agent tool calling."""
 import asyncio
-import re
 from dataclasses import dataclass, replace
 from weakref import WeakKeyDictionary
 
@@ -9,18 +8,10 @@ from langchain_openai import ChatOpenAI
 from openai import AsyncOpenAI, OpenAI, omit
 
 from app.config import settings
-from app.logger import get_logger
+from app.model_catalog import binding_for_id
 from app.providers import usage
 from app.providers.base import UnknownModelError
 
-log = get_logger(__name__)
-MODEL_CATALOG = {
-    "gpt41mini": "gpt-4.1-mini-2025-04-14",
-    "gpt41": "gpt-4.1-2025-04-14",
-    "embed3small": "text-embedding-3-small",
-    "embed3large": "text-embedding-3-large",
-}
-EMBEDDING_MODELS = {"text-embedding-3-small", "text-embedding-3-large"}
 _semaphores = WeakKeyDictionary()
 
 
@@ -58,8 +49,7 @@ def _messages(messages):
 
 
 def _sampling(model_id, temperature):
-    # Reasoning/new raw models may reject temperature; use their API defaults.
-    return {"temperature": temperature} if model_id in {"gpt-4.1-mini-2025-04-14", "gpt-4.1-2025-04-14"} else {}
+    return {"temperature": temperature} if binding_for_id("openai", model_id).temperature else {}
 
 
 def _require_completed(status):
@@ -163,28 +153,8 @@ class OpenAIChat:
 class OpenAIProvider:
     name = "openai"
 
-    def resolve_model(self, name):
-        raw = name.strip()
-        key = "".join(c for c in raw.lower() if c.isalnum())
-        if key in MODEL_CATALOG:
-            return MODEL_CATALOG[key]
-        if raw in EMBEDDING_MODELS or re.fullmatch(r"(?:gpt-[a-z0-9][a-z0-9.-]*|o[134](?:-[a-z0-9.-]+)?)", raw):
-            return raw
-        raise UnknownModelError(f"Unknown OpenAI model {raw!r}. Use {', '.join(self.known_models())} "
-                                "or a direct gpt-*/o-series text ID; Bedrock IDs are not supported.")
-
-    def known_models(self):
-        return sorted(MODEL_CATALOG)
-
-    def validate_model(self, model_id, *, embedding, dimensions):
-        _client_options()
-        if embedding:
-            if model_id not in EMBEDDING_MODELS or dimensions != 1536:
-                raise UnknownModelError("Embeddings require text-embedding-3-small/large with EMBEDDING_DIMENSIONS=1536")
-        elif model_id in EMBEDDING_MODELS:
-            raise UnknownModelError("An embedding model cannot serve a text role")
-        elif model_id not in MODEL_CATALOG.values():
-            log.warning("OpenAI raw model capabilities are unverified locally: %s", model_id)
+    def validate_configuration(self):
+        _client_options()  # Local validation only; no SDK client or network call.
 
     def chat_model(self, model_id, max_tokens=4096):
         return OpenAIChat(model_id, max_tokens)
@@ -193,7 +163,7 @@ class OpenAIProvider:
         return OpenAIConverseClient(model_id)
 
     def embed_sync(self, model_id, text):
-        self.validate_model(model_id, embedding=True, dimensions=settings.EMBEDDING_DIMENSIONS)
+        binding_for_id(self.name, model_id).require({"embedding"}, settings.EMBEDDING_DIMENSIONS)
         with OpenAI(**_client_options()) as client:
             response = client.embeddings.create(model=model_id, input=text, dimensions=1536, encoding_format="float")
         if len(response.data) != 1 or response.data[0].index != 0:
