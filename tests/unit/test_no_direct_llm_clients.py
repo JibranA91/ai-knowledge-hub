@@ -16,10 +16,8 @@ import pytest
 
 APP_DIR = Path(__file__).resolve().parents[2] / "app"
 
-# Only app/providers/ may construct vendor clients. app/services/bedrock.py is a
-# deprecated re-export shim that constructs nothing; it is allowed until removed.
+# Only app/providers/ may construct vendor clients.
 ALLOWED_PACKAGES = {"providers"}
-ALLOWED_FILES = {"services/bedrock.py"}
 
 # Vendor SDKs / LangChain integrations that imply a direct model connection.
 FORBIDDEN_MODULES = {
@@ -42,7 +40,7 @@ def _app_modules():
     """Yield (relative_path, parsed_ast) for every app module under the guard."""
     for path in sorted(APP_DIR.rglob("*.py")):
         rel = path.relative_to(APP_DIR).as_posix()
-        if rel.split("/")[0] in ALLOWED_PACKAGES or rel in ALLOWED_FILES:
+        if rel.split("/")[0] in ALLOWED_PACKAGES:
             continue
         yield rel, ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 

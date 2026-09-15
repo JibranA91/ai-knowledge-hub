@@ -5,11 +5,11 @@
     this module. `tests/unit/test_no_direct_llm_clients.py` enforces it.
 
 Call sites ask for a *role* (what the model is for), never a model ID. Config
-names a *model* per role ("haiku45", "sonnet45"), and the active provider maps
+names a *model* per role ("haiku45", "sonnet45"), and the shared catalogue maps
 that name to its own concrete ID. So retargeting a role — or pointing the whole
 app at a different vendor — is a config change, not a code change:
 
-    role  ──►  config: a friendly model name  ──►  provider: the vendor's ID
+    role  ──►  config: a friendly model name  ──►  catalogue: the vendor's ID
     QUERY      MODEL_QUERY=haiku45                 us.anthropic.claude-haiku-4-5-20251001-v1:0
 
 Usage:
@@ -31,14 +31,14 @@ Usage:
         vec = await model.embed("some text")
 
 Adding a provider: implement `app/providers/base.Provider`, register it in
-`app/providers/__init__.py`, set LLM_PROVIDER. No call site changes.
+`app/providers/__init__.py`, add catalogue bindings, then set LLM_PROVIDER. No call site changes.
 """
 import asyncio
 import json
 import math
 from enum import StrEnum
 
-from app import providers
+from app import model_catalog, providers
 from app.config import settings
 from app.logger import get_logger
 from app.providers.base import UnknownModelError
@@ -62,10 +62,7 @@ class Role(StrEnum):
     EMBEDDING = "embedding"            # vector embeddings for semantic search
 
 
-# Role → the Settings attribute holding its model name. Read at call time so
-# config changes (and test patches) are picked up without re-import. The older
-# BEDROCK_*_MODEL_ID vars are folded onto these in Settings.model_post_init,
-# so existing .env files keep working without a second lookup here.
+# Role -> setting, read at call time so tests and startup use the same resolver.
 _ROLE_SETTING: dict[Role, str] = {
     Role.INGEST_PLAN:  "MODEL_INGEST_PLAN",
     Role.INGEST_WRITE: "MODEL_INGEST_WRITE",
@@ -91,8 +88,10 @@ def validate_configuration() -> dict[Role, str]:
     resolved: dict[Role, str] = {}
     problems: list[str] = []
     provider = _provider()
-    if provider_name() == "bedrock" and (settings.LLM_API_KEY.get_secret_value() or settings.LLM_BASE_URL):
-        problems.append("  bedrock: use AWS credentials and AWS_REGION; leave LLM_API_KEY and LLM_BASE_URL empty")
+    try:
+        provider.validate_configuration()
+    except UnknownModelError as exc:
+        problems.append(f"  connection: {exc}")
     for role in Role:
         name = model_name_for(role)
         if not name:
@@ -100,9 +99,7 @@ def validate_configuration() -> dict[Role, str]:
                 problems.append(f"  {role.value}: {_ROLE_SETTING[role]} must not be empty")
             continue
         try:
-            resolved[role] = provider.resolve_model(name)
-            provider.validate_model(resolved[role], embedding=role == Role.EMBEDDING,
-                                    dimensions=EMBEDDING_STORAGE_DIMENSIONS)
+            resolved[role] = model_id_for(role)
         except UnknownModelError as exc:
             problems.append(f"  {role.value}: {exc}")
     if embedding_enabled() and settings.EMBEDDING_DIMENSIONS != EMBEDDING_STORAGE_DIMENSIONS:
@@ -147,9 +144,21 @@ def model_id_for(role: Role) -> str:
             raise UnknownModelError(f"role {Role(role).value!r}: model must not be empty")
         return ""
     try:
-        return _provider().resolve_model(name)
+        return model_catalog.resolve(name, provider_name(), geo=settings.BEDROCK_INFERENCE_GEO,
+                                     capabilities=required_capabilities(Role(role)),
+                                     dimensions=EMBEDDING_STORAGE_DIMENSIONS)
     except UnknownModelError as exc:
         raise UnknownModelError(f"role {Role(role).value!r}: {exc}") from None
+
+
+def required_capabilities(role: Role) -> set[model_catalog.Capability]:
+    if role == Role.EMBEDDING:
+        return {"embedding"}
+    if role == Role.INGEST_PLAN:
+        return {"chat", "tools"}
+    if role in {Role.INGEST_WRITE, Role.RECALIBRATE}:
+        return {"chat"}
+    return {"converse", "stream"}
 
 
 # ── Chat ───────────────────────────────────────────────────────────────────

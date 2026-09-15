@@ -309,7 +309,7 @@ class WikiEngine:
         self.query_bedrock = model.get_converse(model.Role.QUERY)
         # Dedicated client for the conversational AI Writer agent. By
         # default this uses the same model as query, but it can be pointed at
-        # a stronger model (e.g. Sonnet) via BEDROCK_DRAFT_AGENT_MODEL_ID.
+        # a stronger model (e.g. Sonnet) via MODEL_DRAFT_AGENT.
         self.draft_agent_bedrock = model.get_converse(model.Role.DRAFT_AGENT)
         # Inline AI editor — rewrites a whole page or one section on demand.
         self.edit_bedrock = model.get_converse(model.Role.EDIT)

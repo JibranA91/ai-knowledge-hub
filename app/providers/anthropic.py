@@ -1,24 +1,15 @@
 """Direct Anthropic Messages API; no AWS credentials or embedding fallback."""
 import asyncio
-import re
 from weakref import WeakKeyDictionary
 
 from anthropic import AsyncAnthropic
 from langchain_anthropic import ChatAnthropic
 
 from app.config import settings
-from app.logger import get_logger
+from app.model_catalog import binding_for_id
 from app.providers import usage
 from app.providers.base import UnknownModelError
 
-log = get_logger(__name__)
-
-# Explicit API snapshots; Bedrock IDs and geography prefixes are not portable.
-MODEL_CATALOG = {
-    "haiku45": "claude-haiku-4-5-20251001",
-    "sonnet45": "claude-sonnet-4-5-20250929",
-    "opus45": "claude-opus-4-5-20251101",
-}
 _semaphores = WeakKeyDictionary()
 
 
@@ -62,9 +53,7 @@ def _text(response):
 
 
 def _sampling(model_id, temperature):
-    # SDK v1 moved legacy sampling fields to extra_body. Unknown/new snapshots
-    # use provider defaults instead of receiving potentially unsupported fields.
-    return {"temperature": temperature} if model_id in MODEL_CATALOG.values() else {}
+    return {"temperature": temperature} if binding_for_id("anthropic", model_id).temperature else {}
 
 
 async def _record(model_id, tokens, operation):
@@ -108,26 +97,8 @@ class AnthropicConverseClient:
 class AnthropicProvider:
     name = "anthropic"
 
-    def resolve_model(self, name):
-        raw = name.strip()
-        key = "".join(c for c in raw.lower() if c.isalnum())
-        if key in MODEL_CATALOG:
-            return MODEL_CATALOG[key]
-        if re.fullmatch(r"claude-[a-z0-9]+(?:-[a-z0-9]+)*", raw):
-            return raw
-        raise UnknownModelError(
-            f"Unknown Anthropic model {raw!r}. Use {', '.join(self.known_models())} or a direct claude-* ID. "
-            "Bedrock IDs are not supported; set MODEL_EMBEDDING= to disable embeddings.")
-
-    def known_models(self):
-        return sorted(MODEL_CATALOG)
-
-    def validate_model(self, model_id, *, embedding, dimensions):
-        if embedding:
-            raise UnknownModelError("Anthropic has no embedding API; set MODEL_EMBEDDING= (keyword search)")
-        _client_options()  # Local validation only; never constructs an SDK client.
-        if model_id not in MODEL_CATALOG.values():
-            log.warning("Anthropic raw model capabilities are unverified locally: %s", model_id)
+    def validate_configuration(self):
+        _client_options()  # Local validation only; no SDK client or network call.
 
     def chat_model(self, model_id, max_tokens=4096):
         return ChatAnthropic(model=model_id, max_tokens=max_tokens,

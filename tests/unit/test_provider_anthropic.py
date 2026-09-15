@@ -9,7 +9,7 @@ import pytest
 from langchain_anthropic import ChatAnthropic
 from pydantic import SecretStr
 
-from app import check_models, model, providers
+from app import check_models, model, model_catalog, providers
 from app.config import Settings
 from app.providers import anthropic as adapter
 from app.providers.base import Provider, UnknownModelError
@@ -115,17 +115,16 @@ def test_registered_configuration_needs_no_aws(settings, monkeypatch):
 
 @pytest.mark.parametrize("name,expected", [("Haiku 4.5", "claude-haiku-4-5-20251001"),
                                          ("sonnet45", "claude-sonnet-4-5-20250929"),
-                                         ("opus45", "claude-opus-4-5-20251101"),
-                                         ("claude-new-snapshot", "claude-new-snapshot")])
+                                         ("opus45", "claude-opus-4-5-20251101")])
 def test_model_resolution(settings, name, expected):
-    assert providers.get("anthropic").resolve_model(name) == expected
+    assert model_catalog.resolve(name, "anthropic") == expected
 
 
 @pytest.mark.parametrize("name", ["haikuu45", "us.anthropic.claude-haiku-4-5-20251001-v1:0",
                                   "llama4maverick", "titanembedv1", "https://host/claude-test"])
 def test_rejects_incompatible_model_ids(settings, name):
     with pytest.raises(UnknownModelError):
-        providers.get("anthropic").resolve_model(name)
+        model_catalog.resolve(name, "anthropic")
 
 
 def test_missing_key_is_actionable_without_ambient_credentials(settings, monkeypatch):
@@ -137,7 +136,7 @@ def test_missing_key_is_actionable_without_ambient_credentials(settings, monkeyp
 
 def test_embeddings_must_be_explicitly_disabled(settings):
     settings.MODEL_EMBEDDING = "haiku45"
-    with pytest.raises(UnknownModelError, match="MODEL_EMBEDDING="):
+    with pytest.raises(UnknownModelError, match="embedding"):
         model.validate_configuration()
     with pytest.raises(NotImplementedError):
         providers.get("anthropic").embed_sync("anything", "text")
@@ -259,12 +258,16 @@ async def test_consumer_closing_stream_releases_resources(settings, transport, a
 
 
 @pytest.mark.asyncio
-async def test_raw_models_do_not_receive_legacy_sampling(settings, transport, accounting):
-    settings.MODEL_QUERY = "claude-new-snapshot"
+async def test_catalogue_can_disable_sampling(settings, transport, accounting, monkeypatch):
+    entries = dict(model_catalog.load_catalog())
+    entries["customchat"] = model_catalog.ModelEntry(providers={"anthropic": model_catalog.Binding(
+        model_id="claude-new-snapshot", capabilities={"chat", "tools", "converse", "stream"}, temperature=False)})
+    monkeypatch.setattr(model_catalog, "load_catalog", lambda: entries)
+    settings.MODEL_QUERY = "customchat"
     requests, _ = transport(lambda r: httpx2.Response(200, json=message()))
     await model.get_converse(model.Role.QUERY).converse("sys", [{"role": "user", "content": [{"text": "hello"}]}])
     assert "temperature" not in json.loads(requests[0].content)
-    settings.MODEL_RECALIBRATE = "claude-new-snapshot"
+    settings.MODEL_RECALIBRATE = "customchat"
     assert model.get_chat(model.Role.RECALIBRATE)._runnable.temperature is None
 
 

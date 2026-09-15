@@ -180,13 +180,21 @@ async def test_rewrite_replaces_embedding_provenance_and_failed_embed_invalidate
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("before_provider,before_model,after_model", [
+    ("bedrock", "titanembedv1", "embed3small"),
+    ("openai", "embed3small", "embed3large"),
+])
 async def test_switching_to_same_dimension_model_excludes_old_vectors(
-    test_engine, default_user, user_ctx, require_pgvector, monkeypatch
+    test_engine, default_user, user_ctx, require_pgvector, monkeypatch,
+    before_provider, before_model, after_model,
 ):
+    monkeypatch.setattr(model.settings, "LLM_PROVIDER", before_provider)
+    monkeypatch.setattr(model.settings, "MODEL_EMBEDDING", before_model)
     vec = _unit_vec(1.0)
     with patch.object(embeddings, "embed_text", AsyncMock(return_value=vec)):
         await wiki_db.upsert_wiki_page("old.md", "# Old\nold facts")
-        monkeypatch.setattr(model.settings, "MODEL_EMBEDDING", "cohereembedv4")
+        monkeypatch.setattr(model.settings, "LLM_PROVIDER", "openai")
+        monkeypatch.setattr(model.settings, "MODEL_EMBEDDING", after_model)
         await wiki_db.upsert_wiki_page("new.md", "# New\nnew facts")
         assert [p["path"] for p in await wiki_db.semantic_search_wiki(vec)] == ["new.md"]
         assert "old.md" in await wiki_db.find_relevant_pages("old")

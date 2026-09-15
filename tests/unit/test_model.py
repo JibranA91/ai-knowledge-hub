@@ -9,28 +9,12 @@ from unittest.mock import MagicMock, patch
 class _FakeProvider:
     name = "fake"
 
-    # A tiny catalogue so name→ID mapping can be asserted without depending on
-    # Bedrock's real one.
-    CATALOG = {"fastmodel": "fake.fast-v1", "bigmodel": "fake.big-v1"}
-
     def __init__(self):
         self.chat_calls = []
         self.converse_calls = []
         self.embed_calls = []
 
-    def resolve_model(self, name):
-        from app.providers.base import UnknownModelError
-        key = "".join(c for c in name.lower() if c.isalnum())
-        if key in self.CATALOG:
-            return self.CATALOG[key]
-        if "." in name:
-            return name  # raw ID passthrough
-        raise UnknownModelError(f"Unknown model name {name!r} for the fake provider.")
-
-    def known_models(self):
-        return sorted(self.CATALOG)
-
-    def validate_model(self, model_id, *, embedding, dimensions):
+    def validate_configuration(self):
         pass
 
     def chat_model(self, model_id, max_tokens=4096):
@@ -49,7 +33,18 @@ class _FakeProvider:
 
 
 @pytest.fixture
-def fake_provider():
+def fake_provider(monkeypatch):
+    from app import model_catalog
+    from app.model_catalog import Binding, ModelEntry
+    entries = {}
+    for name, model_id in {"fastmodel": "fake.fast-v1", "bigmodel": "fake.big-v1",
+                           "planner": "planner.model", "drafter": "drafter.model", "embed": "embed.model"}.items():
+        is_embedding = name == "embed"
+        entries[name] = ModelEntry(providers={"fake": Binding(
+            model_id=model_id, capabilities={"embedding"} if is_embedding else {"chat", "tools", "converse", "stream"},
+            dimensions={1536} if is_embedding else set())})
+    monkeypatch.setattr(model_catalog, "load_catalog", lambda: entries)
+    monkeypatch.setattr("app.model.provider_name", lambda: "fake")
     provider = _FakeProvider()
     with patch("app.model._provider", return_value=provider):
         yield provider
@@ -64,8 +59,8 @@ def test_model_name_for_reads_the_configured_setting():
         assert model.model_name_for(model.Role.QUERY) == "fastmodel"
 
 
-def test_model_id_for_maps_the_name_through_the_provider(fake_provider):
-    """Config carries a name; the provider turns it into a vendor model ID."""
+def test_model_id_for_maps_the_name_through_the_catalogue(fake_provider):
+    """Config carries a name; the central catalogue selects the provider's model ID."""
     from app import model
     with patch("app.model.settings") as s:
         s.MODEL_QUERY = "fastmodel"
@@ -116,9 +111,10 @@ def test_validate_configuration_resolves_every_configured_role(fake_provider):
         for setting in model._ROLE_SETTING.values():
             setattr(s, setting, "fastmodel")
         s.EMBEDDING_DIMENSIONS = 1536
+        s.MODEL_EMBEDDING = "embed"
         resolved = model.validate_configuration()
     assert set(resolved) == set(model.Role)
-    assert set(resolved.values()) == {"fake.fast-v1"}
+    assert set(resolved.values()) == {"fake.fast-v1", "embed.model"}
 
 
 def test_validate_configuration_skips_unset_optional_roles(fake_provider):
@@ -152,7 +148,7 @@ def test_get_chat_uses_the_role_model_and_tracks_usage(fake_provider):
     from app import model
     from app.providers.usage import TrackedChat
     with patch("app.model.settings") as s:
-        s.MODEL_INGEST_PLAN = "planner.model"
+        s.MODEL_INGEST_PLAN = "planner"
         llm = model.get_chat(model.Role.INGEST_PLAN, max_tokens=1234)
     assert isinstance(llm, TrackedChat)
     assert fake_provider.chat_calls == [("planner.model", 1234)]
@@ -178,7 +174,7 @@ def test_get_chat_operation_can_be_overridden(fake_provider):
 def test_get_converse_uses_the_role_model(fake_provider):
     from app import model
     with patch("app.model.settings") as s:
-        s.MODEL_DRAFT_AGENT = "drafter.model"
+        s.MODEL_DRAFT_AGENT = "drafter"
         client = model.get_converse(model.Role.DRAFT_AGENT)
     assert fake_provider.converse_calls == ["drafter.model"]
     assert client.model_id == "drafter.model"
@@ -208,18 +204,17 @@ async def test_embed_returns_none_when_disabled(fake_provider):
 async def test_embed_delegates_to_provider(fake_provider):
     from app import model
     with patch("app.model.settings") as s:
-        s.MODEL_EMBEDDING = "embed.model"
+        s.MODEL_EMBEDDING = "embed"
         vec = await model.embed("hi")
     assert vec == [0.5] * 1536
     assert fake_provider.embed_calls == [("embed.model", "hi")]
 
 
 @pytest.mark.asyncio
-async def test_embed_swallows_provider_errors():
+async def test_embed_swallows_provider_errors(fake_provider):
     """Semantic search degrades to BM25 rather than failing the request."""
     from app import model
     boom = MagicMock()
-    boom.resolve_model.return_value = "embed.model"
     boom.embed_sync.side_effect = RuntimeError("provider down")
     with patch("app.model._provider", return_value=boom), \
          patch("app.model.settings") as s:

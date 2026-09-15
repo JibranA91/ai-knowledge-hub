@@ -54,7 +54,7 @@ async def _embedding_col_exists() -> bool | None:
         log.info("embedding_col_exists | column present — semantic search enabled")
     else:
         log.warning(
-            "embedding_col_exists | column absent — BEDROCK_EMBEDDING_MODEL_ID is set "
+            "embedding_col_exists | column absent — MODEL_EMBEDDING is set "
             "but wiki_pages.embedding does not exist. Run 'alembic upgrade head' with "
             "pgvector installed in PostgreSQL to enable semantic search."
         )
