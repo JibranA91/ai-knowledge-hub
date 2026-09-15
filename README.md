@@ -14,6 +14,40 @@ AI Knowledge Hub is an AI-maintained internal wiki. Unlike a traditional documen
 
 ---
 
+## Mathematical formulas in Markdown
+
+Wiki pages, chat replies, AI Writer drafts, and inline AI-edit previews support
+LaTeX math using the locally bundled [KaTeX](https://katex.org/docs/supported.html)
+renderer:
+
+- Inline: `$E = mc^2$` or `\(E = mc^2\)`.
+- Display equations: `$$ ... $$` or `\[ ... \]`, including multiline formulas.
+- Fenced blocks labelled `math` are rendered as display equations.
+
+For example:
+
+```markdown
+The roots are:
+
+$$
+x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+$$
+```
+
+Normal code fences and inline code stay literal. With single-dollar delimiters,
+do not put whitespace just inside the delimiters; escape currency signs as
+`\$` when they could be mistaken for math. In Markdown tables, use `\vert`
+instead of a literal `|` inside formulas so it is not treated as a cell separator.
+
+Invalid or unsupported formulas remain readable as their source text. KaTeX
+does not implement every LaTeX package. Rendering never modifies saved Markdown
+or exported files, and wide equations scroll inside the reading panel.
+
+The math runtime and fonts are included in the application, so they need no
+additional CDN connection. Markdown and sanitization still use the existing
+external assets. Math input is untrusted: resource-loading/HTML commands are
+disabled, expansion and size are bounded, and the output is sanitized.
+
 ## High-Level Architecture
 
 ```

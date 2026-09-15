@@ -1,0 +1,4 @@
+/* Scroll wide display equations within the reading panel, not the whole page. */
+.katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.3em 0; }
+.katex-display > .katex { white-space: nowrap; }
+.math-fallback { white-space: pre-wrap; overflow-wrap: anywhere; }
