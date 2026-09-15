@@ -7,6 +7,51 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 
+@pytest.mark.parametrize("kind", ["chat", "converse", "embedding"])
+@pytest.mark.parametrize("explicit_credentials", [False, True])
+def test_clients_use_only_aws_connection_settings(monkeypatch, kind, explicit_credentials):
+    from app import model
+    from app.config import Settings
+    from app.providers import bedrock
+
+    for name in Settings.model_fields:
+        monkeypatch.delenv(name, raising=False)
+    settings = Settings(_env_file=None, LLM_PROVIDER="bedrock", LLM_API_KEY="unused-test-key",
+                        LLM_BASE_URL="https://unused.example", AWS_REGION="us-west-2",
+                        MODEL_EMBEDDING="titanembedv1")
+    monkeypatch.setattr(model, "settings", settings)
+    monkeypatch.setattr(bedrock, "settings", settings)
+    credentials = ({"aws_access_key_id": "test-aws-id", "aws_secret_access_key": "test-aws-secret",
+                    "aws_session_token": "test-session-token"} if explicit_credentials else {})
+    monkeypatch.setattr(bedrock, "get_credentials", lambda: credentials.copy())
+    constructor = MagicMock()
+    monkeypatch.setattr(bedrock, "ChatBedrockConverse", constructor)
+    monkeypatch.setattr(bedrock.boto3, "client", constructor)
+    constructor.return_value.invoke_model.return_value = {
+        "body": MagicMock(read=lambda: b'{"embedding": [0.1]}')}
+
+    resolved = model.validate_configuration()
+    assert model.provider_name() == "bedrock"
+    if kind == "chat":
+        model.get_chat(model.Role.INGEST_WRITE)
+    elif kind == "converse":
+        model.get_converse(model.Role.QUERY)
+    else:
+        model._provider().embed_sync(resolved[model.Role.EMBEDDING], "test")
+
+    constructor.assert_called_once()
+    kwargs = constructor.call_args.kwargs
+    assert kwargs["region_name"] == "us-west-2"
+    for name in ("aws_access_key_id", "aws_secret_access_key", "aws_session_token"):
+        if explicit_credentials:
+            assert kwargs[name] == credentials[name]
+        else:
+            assert name not in kwargs
+    assert not {"api_key", "base_url", "endpoint_url"} & kwargs.keys()
+    assert "unused-test-key" not in repr(constructor.call_args)
+    assert "unused.example" not in repr(constructor.call_args)
+
+
 def _make_service(mock_client=None):
     """Build a BedrockConverseClient without real boto3 initialisation."""
     from app.providers.bedrock import BedrockConverseClient, _semaphores

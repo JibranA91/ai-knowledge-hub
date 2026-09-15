@@ -1,6 +1,6 @@
 from urllib.parse import urlsplit
 
-from pydantic import SecretStr, field_validator
+from pydantic import SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings
 
 from app.providers.base import UnknownModelError
@@ -131,8 +131,10 @@ class Settings(BaseSettings):
 
     @field_validator("LLM_BASE_URL")
     @classmethod
-    def validate_base_url(cls, value: str) -> str:
+    def validate_base_url(cls, value: str, info: ValidationInfo) -> str:
         value = value.strip()
+        if (info.data.get("LLM_PROVIDER") or "bedrock").strip().lower() == "bedrock":
+            return value  # Bedrock never uses the direct API endpoint.
         if value:
             url = urlsplit(value)
             if (url.scheme not in {"http", "https"} or not url.hostname

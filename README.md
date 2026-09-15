@@ -111,10 +111,12 @@ out too if you want every text role to use the shared default.
 
 `LLM_API_KEY` (masked in settings representations) and `LLM_BASE_URL` are shared
 settings used by the direct Anthropic and OpenAI adapters.
-Bedrock rejects non-empty values for them rather than silently ignoring them;
-continue to use AWS authentication and `AWS_REGION`. Endpoint URLs must be HTTP(S)
-and cannot contain embedded credentials, query strings, or fragments. Keep keys
-in environment variables or your ignored `.env`, never in version control.
+`LLM_PROVIDER` alone selects the adapter; credentials never trigger an automatic
+switch or fallback. Bedrock ignores both direct API settings, even when non-empty,
+and continues to use AWS authentication and `AWS_REGION`. For direct API providers,
+endpoint URLs must be HTTP(S) and cannot contain embedded credentials, query
+strings, or fragments. Keep keys in environment variables or your ignored `.env`,
+never in version control.
 
 ### Test a model connection
 
@@ -1109,7 +1111,7 @@ All four require `can_view_wiki` and are strictly org-scoped to `target_kind='pa
 | `ASSUMED_ROLE_DURATION` | `3600` | STS assumed-role credential lifetime (seconds) |
 | `LLM_PROVIDER` | `bedrock` | Registered adapter: bedrock, anthropic or openai |
 | `LLM_API_KEY` | *(empty)* | Shared secret for direct API adapters; not used by Bedrock |
-| `LLM_BASE_URL` | *(empty)* | Trusted direct API endpoint override; empty uses the provider's official endpoint |
+| `LLM_BASE_URL` | *(empty)* | Trusted direct API endpoint override; empty uses the provider's official endpoint; ignored by Bedrock |
 | `MODEL_DEFAULT` | `haiku45` | Friendly model name inherited by all omitted text roles |
 | `BEDROCK_INFERENCE_GEO` | `us` | Catalogue-supported profile geography; blank selects the foundation ID |
 | `MODEL_INGEST_PLAN` | inherits `MODEL_DEFAULT` | Ingest planner model |

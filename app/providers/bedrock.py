@@ -19,7 +19,6 @@ from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponen
 from app.config import settings
 from app.logger import get_logger
 from app.providers import usage
-from app.providers.base import UnknownModelError
 from app.services.aws_auth import get_credentials
 
 log = get_logger(__name__)
@@ -210,9 +209,8 @@ class BedrockProvider:
     name = "bedrock"
 
     def validate_configuration(self) -> None:
-        if settings.LLM_API_KEY.get_secret_value() or settings.LLM_BASE_URL:
-            raise UnknownModelError("bedrock: use AWS credentials and AWS_REGION; "
-                                    "leave LLM_API_KEY and LLM_BASE_URL empty")
+        # AWS resolves credentials when creating clients; direct API settings are unused.
+        pass
 
     def chat_model(self, model_id: str, max_tokens: int = 4096):
         """Create a ChatBedrockConverse runnable (untracked — `app.model` wraps it)."""
