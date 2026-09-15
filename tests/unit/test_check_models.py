@@ -2,6 +2,7 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
+from pydantic import SecretStr
 import pytest
 
 from app import check_models, model
@@ -44,10 +45,18 @@ def test_invalid_configuration_exits_nonzero(configured, monkeypatch, setting, v
     assert "Configuration failed" in capsys.readouterr().out
 
 
-def test_shared_auth_not_silently_ignored_by_bedrock(configured, monkeypatch, capsys):
-    monkeypatch.setattr(configured, "LLM_BASE_URL", "http://localhost:1234")
-    assert check_models.main([]) == 1
-    assert "use AWS credentials" in capsys.readouterr().out
+@pytest.mark.parametrize("key,url", [("unused-test-key", ""), ("", "https://unused.example"),
+                                     ("unused-test-key", "https://unused.example")])
+def test_bedrock_ignores_direct_connection_settings(configured, monkeypatch, capsys, key, url):
+    monkeypatch.setattr(configured, "LLM_API_KEY", SecretStr(key))
+    monkeypatch.setattr(configured, "LLM_BASE_URL", url)
+    for method in ("chat_model", "converse_client", "embed_sync"):
+        monkeypatch.setattr(model._provider(), method, Mock(side_effect=AssertionError("must stay offline")))
+    assert check_models.main([]) == 0
+    output = capsys.readouterr().out
+    assert "Provider: bedrock" in output
+    assert "us.anthropic.claude-haiku-4-5-20251001-v1:0" in output
+    assert "unused-test-key" not in output and "unused.example" not in output
 
 
 def test_plan_deduplicates_model_and_capability(configured):

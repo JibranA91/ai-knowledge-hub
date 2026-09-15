@@ -96,7 +96,16 @@ def test_shared_connection_settings_mask_api_key():
 
 @pytest.mark.parametrize("url", ["file:///tmp/model", "localhost:1234", "https://host/?key=secret",
                                  "https://user:secret@host/v1", "https://host/#secret"])
-def test_shared_endpoint_rejects_unsafe_or_malformed_urls(url):
+@pytest.mark.parametrize("provider", ["anthropic", "openai"])
+def test_shared_endpoint_rejects_unsafe_or_malformed_urls(url, provider):
     with pytest.raises(ValueError, match="LLM_BASE_URL") as exc:
-        Settings(_env_file=None, LLM_BASE_URL=url, LLM_API_KEY="private-key")
+        Settings(_env_file=None, LLM_PROVIDER=provider, LLM_BASE_URL=url, LLM_API_KEY="private-key")
     assert "private-key" not in str(exc.value)
+
+
+@pytest.mark.parametrize("provider", ["bedrock", " Bedrock "])
+@pytest.mark.parametrize("url", ["https://gateway.example/v1", "not-a-url", "https://host/?key=secret"])
+def test_bedrock_does_not_validate_unused_direct_endpoint(provider, url):
+    settings = Settings(_env_file=None, LLM_PROVIDER=provider, LLM_BASE_URL=url,
+                        LLM_API_KEY="unused-test-key")
+    assert settings.LLM_BASE_URL == url
