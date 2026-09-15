@@ -15,6 +15,7 @@ from app.providers.base import ChatModel, ConverseClient, Message, Provider
 # with heavy/optional SDK deps doesn't cost anything for users who don't use it.
 _PROVIDER_MODULES: dict[str, tuple[str, str]] = {
     "bedrock": ("app.providers.bedrock", "BedrockProvider"),
+    "anthropic": ("app.providers.anthropic", "AnthropicProvider"),
 }
 
 
