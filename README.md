@@ -9,7 +9,7 @@ AI Knowledge Hub is an AI-maintained internal wiki. Unlike a traditional documen
 ## Requirements
 
 - **Docker + Docker Compose** (recommended) — or Python 3.12+ with a PostgreSQL 16 instance for local dev.
-- **Model access:** either an AWS account with Bedrock access or a direct Anthropic API key. Select `LLM_PROVIDER=bedrock` or `anthropic`; see [direct Anthropic setup](#direct-anthropic-setup). Other providers are not implemented.
+- **Model access:** an AWS account with Bedrock access, a direct Anthropic API key, or an OpenAI API key. Select `LLM_PROVIDER=bedrock`, `anthropic`, or `openai`; see [Anthropic setup](#direct-anthropic-setup) and [OpenAI setup](#direct-openai-setup). Other providers are not implemented.
 - **Optional:** an AWS S3 bucket — only if you set `STORAGE_BACKEND=s3`. The default `local` backend stores raw uploads on a Docker volume and needs no S3.
 
 ---
@@ -110,7 +110,7 @@ The example environment keeps explicit recalibration/edit overrides; comment tho
 out too if you want every text role to use the shared default.
 
 `LLM_API_KEY` (masked in settings representations) and `LLM_BASE_URL` are shared
-settings used by the direct Anthropic adapter and available for future adapters.
+settings used by the direct Anthropic and OpenAI adapters.
 Bedrock rejects non-empty values for them rather than silently ignoring them;
 continue to use AWS authentication and `AWS_REGION`. Endpoint URLs must be HTTP(S)
 and cannot contain embedded credentials, query strings, or fragments. Keep keys
@@ -237,6 +237,67 @@ concurrent requests per model/process. Usage is recorded on completed calls,
 including cache-input tokens; interrupted calls can still be billed by Anthropic.
 Known Claude 4.5 snapshots use the app's sampling setting; unknown raw snapshots
 use provider sampling defaults to avoid sending unsupported parameters.
+
+### Direct OpenAI setup
+
+The `openai` adapter supports text responses, streaming, agent tool calls, and
+optional embeddings through the official SDK and LangChain integration. It uses
+the [Responses API](https://developers.openai.com/api/reference/python/resources/responses/methods/create),
+not Chat Completions; arbitrary OpenAI-compatible servers and Azure deployments
+are not guaranteed compatible.
+
+```dotenv
+LLM_PROVIDER=openai
+LLM_API_KEY=<your-openai-api-key>
+LLM_BASE_URL=
+MODEL_DEFAULT=gpt41mini
+MODEL_EMBEDDING=embed3small
+```
+
+Remove/comment out inherited text-role `MODEL_*` overrides and legacy
+`BEDROCK_*_MODEL_ID` settings before switching, or replace them with OpenAI models.
+The aliases `gpt41mini` and `gpt41` select the explicit 2025-04-14 snapshots.
+Raw `gpt-*` and `o1`/`o3`/`o4` family IDs are accepted with a local-verification
+warning; they must support Responses and the capabilities required by their role.
+Raw models use default sampling to avoid unsupported temperature parameters.
+Account access and model availability still require a live check.
+
+`LLM_BASE_URL` defaults to `https://api.openai.com/v1`. Custom gateways must be
+trusted with your prompts and API key and implement Responses (plus embeddings
+if enabled). The app explicitly supplies its key and URL rather than adopting
+ambient `OPENAI_API_KEY`/`OPENAI_BASE_URL` values. Model calls need no AWS credentials;
+S3 storage still does. A ChatGPT subscription is not an API key.
+
+`embed3small` and `embed3large` map to `text-embedding-3-small` and
+`text-embedding-3-large`. Both request exactly 1,536 dimensions to fit this app's
+database; see [embedding dimensions](https://developers.openai.com/api/docs/guides/embeddings).
+Leave `MODEL_EMBEDDING=` blank for keyword-only search. Existing vectors from
+other models are preserved but excluded from semantic search until regenerated
+with the selected model. Switching providers does not automatically re-embed
+existing pages. Chat and embeddings currently use the same provider and key.
+
+Responses are sent with `store=false`; conversation history remains app-managed.
+This is not a zero-data-retention guarantee: prompts still leave your deployment
+and your provider's data policies apply. Streams require a completed terminal
+event, reject incomplete results, and are never replayed after partial output.
+Requests have two SDK retries, a 120-second timeout and a 20-call per-model/process
+async concurrency limit. Cancellation closes clients and releases capacity.
+Agent text is normalized for the existing ingest/recalibration parsers while
+preserving tool calls. Text usage is tracked centrally; embedding usage and
+interrupted calls without final usage totals are not included in the usage log.
+
+Install updated dependencies or rebuild the image before testing:
+
+```sh
+python -m app.check_models
+python -m app.check_models --live --yes
+```
+
+The first command is offline. The second sends synthetic prompts/embeddings and
+can incur charges. Automated tests exercise real SDK encoding/decoding with fake
+HTTP responses, plus draft persistence in a disposable database; they do not
+prove access to your account's models. Existing deployment settings are not
+changed automatically.
 
 **Adding another provider** (Azure, Ollama, etc.):
 

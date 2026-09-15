@@ -16,6 +16,7 @@ from app.providers.base import ChatModel, ConverseClient, Message, Provider
 _PROVIDER_MODULES: dict[str, tuple[str, str]] = {
     "bedrock": ("app.providers.bedrock", "BedrockProvider"),
     "anthropic": ("app.providers.anthropic", "AnthropicProvider"),
+    "openai": ("app.providers.openai", "OpenAIProvider"),
 }
 
 
