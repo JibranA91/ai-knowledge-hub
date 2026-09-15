@@ -85,6 +85,72 @@ Config names a **model**, not a vendor model ID. The provider maps the name to i
 | `EDIT` | inline page/section editor | `MODEL_EDIT` | `sonnet45` |
 | `EMBEDDING` | semantic search vectors | `MODEL_EMBEDDING` | *(unset — BM25 only)* |
 
+### Simple model configuration
+
+Use one model for all text roles, with optional role-specific overrides:
+
+```dotenv
+LLM_PROVIDER=bedrock
+MODEL_DEFAULT=haiku45
+MODEL_EMBEDDING=
+```
+
+Bedrock still needs your existing AWS credentials/role and region. This example
+uses an existing model name, not a guarantee of account access or suitability;
+test it before switching. Your existing `.env` is not rewritten by this feature.
+
+Precedence is **explicit `MODEL_<ROLE>` > non-empty legacy role setting >
+`MODEL_DEFAULT` > existing built-in role default**. An explicitly blank text-role
+override remains an error, rather than silently selecting another model. A blank
+`MODEL_DEFAULT` preserves previous behavior. Embeddings never inherit the text
+default; explicitly use `MODEL_EMBEDDING=` to disable them.
+
+To switch an existing setup to a shared default, remove or comment out the role
+overrides you want it to replace, including legacy `BEDROCK_*_MODEL_ID` values.
+The example environment keeps explicit recalibration/edit overrides; comment those
+out too if you want every text role to use the shared default.
+
+`LLM_API_KEY` (masked in settings representations) and `LLM_BASE_URL` are shared
+settings for future adapters. They **do not enable a new provider** on their own.
+Bedrock rejects non-empty values for them rather than silently ignoring them;
+continue to use AWS authentication and `AWS_REGION`. Endpoint URLs must be HTTP(S)
+and cannot contain embedded credentials, query strings, or fragments. Keep keys
+in environment variables or your ignored `.env`, never in version control.
+
+### Test a model connection
+
+This command loads configuration without starting the application, running
+migrations, or connecting to the wiki database:
+
+```sh
+python -m app.check_models
+```
+
+By default it only validates configuration and lists **NOT TESTED** live checks.
+It cannot prove credentials, access or runtime capabilities without a request.
+To authorize small synthetic requests and acknowledge possible provider charges:
+
+```sh
+python -m app.check_models --live --yes
+# Or test only one role (repeat --role to select more):
+python -m app.check_models --live --yes --role query
+```
+
+For an already-built running container, use
+`docker compose exec wiki python -m app.check_models` and append the same flags.
+The container must contain this code and the intended settings. These commands
+do not modify configuration, generate wiki content or save usage rows to the database.
+Provider-side billing still applies. SDK tracing is disabled in the check process.
+
+The live checks exercise the clients each role uses: a structured tool call for
+ingest planning (the tool is never executed), LangChain responses for ingest writing
+and recalibration, direct responses/streams for chat, AI Writer and editing, and
+vector validation when embeddings are enabled. Each unique model/capability pair
+is tested once. Failures produce a nonzero exit code; disabled embeddings are skipped.
+Provider exception details are suppressed to avoid exposing credentials or endpoints.
+Requests use small output limits but remain subject to the provider's retries/timeouts.
+A pass is a connectivity smoke test, not a guarantee of real-document quality.
+
 So switching the chat model is one word:
 
 ```diff

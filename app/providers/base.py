@@ -6,8 +6,16 @@ connection to an LLM vendor. Everything else goes through `app.model`.
 To add a provider (OpenAI, Anthropic direct, Azure, Ollama, …):
 
   1. Create `app/providers/<name>.py` with a class implementing `Provider`.
-  2. Register it in `app/providers/__init__.py::PROVIDERS`.
+  2. Register it in `app/providers/__init__.py::_PROVIDER_MODULES`.
   3. Point `LLM_PROVIDER=<name>` at it and set the per-role model IDs.
+
+API-key/endpoint adapters should use settings.LLM_API_KEY.get_secret_value()
+and settings.LLM_BASE_URL rather than adding vendor-specific duplicates.
+Only send the key to the configured service; never put it in logs or URLs.
+Bedrock retains AWS authentication and rejects these generic connection settings.
+MODEL_DEFAULT supplies unconfigured text roles; embeddings remain independent.
+The connection-check CLI invokes clients with operation=""; this must not require
+database access. Use usage.record, which already skips persistence in that case.
 
 ── Canonical message format ───────────────────────────────────────────────
 `ConverseClient` speaks the Bedrock Converse message shape, which is the
