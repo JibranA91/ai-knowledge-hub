@@ -9,10 +9,10 @@ a mocked Bedrock stream and assert the draft is persisted. Requires PostgreSQL.
 import json
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.services import chat_sessions
-from app.services.bedrock import BedrockService
+from app.providers.bedrock import BedrockConverseClient as BedrockService
 from app.services.wiki_engine import WikiEngine
 
 
@@ -59,3 +59,27 @@ async def test_terminated_draft_still_persists(client, user_ctx, default_user):
     )
     draft = await chat_sessions.get_draft(sid)
     assert "Full body." in draft["draft_content"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["writer", "chat"])
+async def test_provider_failure_never_saves_partial_generation(client, user_ctx, mode):
+    def broken_events():
+        yield {"contentBlockDelta": {"delta": {"text":
+            "[DRAFT_START]# Partial\nunfinished[DRAFT_END][DRAFT_READY]"}}}
+        raise RuntimeError("provider disconnected")
+
+    upstream = MagicMock()
+    upstream.converse_stream.return_value = {"stream": broken_events()}
+    with patch.object(BedrockService, "_make_client", return_value=upstream), \
+         patch.object(WikiEngine, "_find_relevant_pages", AsyncMock(return_value=[])):
+        engine = WikiEngine()
+        stream = (engine.writer_chat_stream(None, "write a page") if mode == "writer"
+                  else engine.chat_stream(None, "write an answer"))
+        events = _sse_events([event async for event in stream])
+    assert events[-1]["type"] == "error"
+    assert not any(event["type"] == "done" for event in events)
+    sid = next(event["session_id"] for event in events if event["type"] == "meta")
+    session = await chat_sessions.get_or_create(sid)
+    assert not session.messages
+    assert not session.draft_content

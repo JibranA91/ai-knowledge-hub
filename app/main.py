@@ -24,6 +24,14 @@ async def lifespan(app: FastAPI):
     from app.services.orgs import ensure_default_org_and_admin, DEFAULT_ORG_ID
     from app.services.wiki_db import get_wiki_file, set_wiki_file
 
+    # Resolve every configured model name against the active provider before
+    # anything else. A typo here would otherwise stay silent until the first
+    # request that happens to use that role, and arrive as an opaque vendor 400.
+    from app import model as model_layer
+    resolved = model_layer.validate_configuration()
+    log.info("startup | llm provider=%s | %s", model_layer.provider_name(),
+             " | ".join(f"{role.value}={model_layer.model_name_for(role)}" for role in resolved))
+
     log.info("startup | running DB migrations")
     await db.run_migrations()
     log.info("startup | migrations complete")

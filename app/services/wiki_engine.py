@@ -5,10 +5,10 @@ import time
 import zipfile
 from datetime import datetime, UTC
 
+from app import model
 from app.config import settings
 from app.logger import get_logger
 from app.services import md_sections
-from app.services.bedrock import BedrockService
 from app.services.export_templates import EXPORT_README_TEMPLATE
 from app.services.ingest_agent import IngestAgent
 from app.utils import page_type_or_infer, parse_llm_json, strip_fence_unconditional
@@ -306,13 +306,13 @@ def _render_query_page(question: str, answer: str, sources: list[str]) -> str:
 
 class WikiEngine:
     def __init__(self):
-        self.query_bedrock = BedrockService(settings.BEDROCK_QUERY_MODEL_ID)
+        self.query_bedrock = model.get_converse(model.Role.QUERY)
         # Dedicated client for the conversational AI Writer agent. By
         # default this uses the same model as query, but it can be pointed at
-        # a stronger model (e.g. Sonnet) via BEDROCK_DRAFT_AGENT_MODEL_ID.
-        self.draft_agent_bedrock = BedrockService(settings.BEDROCK_DRAFT_AGENT_MODEL_ID)
+        # a stronger model (e.g. Sonnet) via MODEL_DRAFT_AGENT.
+        self.draft_agent_bedrock = model.get_converse(model.Role.DRAFT_AGENT)
         # Inline AI editor — rewrites a whole page or one section on demand.
-        self.edit_bedrock = BedrockService(settings.BEDROCK_EDIT_MODEL_ID)
+        self.edit_bedrock = model.get_converse(model.Role.EDIT)
         self._ingest_agent = IngestAgent()
 
     # ── Internal helpers ───────────────────────────────────────────────────
@@ -617,9 +617,14 @@ Include at most 8 pages. Only include paths that appear in the index."""
         yield f"data: {_json.dumps({'type': 'meta', 'session_id': session.session_id, 'sources': relevant})}\n\n"
 
         answer_parts: list[str] = []
-        async for chunk in self.query_bedrock.converse_stream(system_prompt, api_msgs, max_tokens=4096, operation="chat_stream"):
-            answer_parts.append(chunk)
-            yield f"data: {_json.dumps({'type': 'chunk', 'text': chunk})}\n\n"
+        try:
+            async for chunk in self.query_bedrock.converse_stream(system_prompt, api_msgs, max_tokens=4096, operation="chat_stream"):
+                answer_parts.append(chunk)
+                yield f"data: {_json.dumps({'type': 'chunk', 'text': chunk})}\n\n"
+        except Exception:
+            log.exception("chat_stream | generation failed")
+            yield f"data: {_json.dumps({'type': 'error', 'message': 'Generation was interrupted. Please retry.'})}\n\n"
+            return
 
         answer = "".join(answer_parts)
 
@@ -749,7 +754,9 @@ Do NOT score the wiki. Return ONLY JSON:
             "has_schema": bool(schema_md),
             "has_embeddings": has_embeddings,
             "embedding_dimensions": settings.EMBEDDING_DIMENSIONS,
-            "embedding_model": settings.BEDROCK_EMBEDDING_MODEL_ID,
+            "embedding_model": model.model_id_for(model.Role.EMBEDDING),
+            "embedding_provider": model.provider_name(),
+            "embedding_space": model.embedding_identity(),
         }
 
         buf = io.BytesIO()
@@ -766,7 +773,7 @@ Do NOT score the wiki. Return ONLY JSON:
             if has_embeddings:
                 embeddings_section = (
                     f"This export **includes** pre-computed vector embeddings.\n\n"
-                    f"- **Model**: `{settings.BEDROCK_EMBEDDING_MODEL_ID}`\n"
+                    f"- **Model**: `{model.model_id_for(model.Role.EMBEDDING)}`\n"
                     f"- **Dimensions**: `{settings.EMBEDDING_DIMENSIONS}`\n\n"
                     f"To use cosine/hybrid retrieval you must generate query vectors with the "
                     f"same model at the same dimension count."
@@ -779,7 +786,7 @@ Do NOT score the wiki. Return ONLY JSON:
                 )
             readme = EXPORT_README_TEMPLATE.format(
                 embeddings_section=embeddings_section,
-                embedding_model=settings.BEDROCK_EMBEDDING_MODEL_ID or "N/A",
+                embedding_model=model.model_id_for(model.Role.EMBEDDING) or "N/A",
                 embedding_dimensions=settings.EMBEDDING_DIMENSIONS or "N/A",
             )
             zf.writestr("README.md", readme)
@@ -844,15 +851,19 @@ Do NOT score the wiki. Return ONLY JSON:
         full_assistant_text: list[str] = []
         section_errors: list[str] = []
 
-        async for chunk in self.draft_agent_bedrock.converse_stream(
-            system_prompt, api_msgs, max_tokens=4096, operation="writer_chat"
-        ):
-            full_assistant_text.append(chunk)
-            for evt in parser.feed(chunk):
-                # Filter out internal `_done` events here; we'll handle them after stream
-                if evt["type"] in ("draft_done", "section_done"):
-                    continue
-                yield f"data: {_json.dumps(evt)}\n\n"
+        try:
+            async for chunk in self.draft_agent_bedrock.converse_stream(
+                system_prompt, api_msgs, max_tokens=4096, operation="writer_chat"
+            ):
+                full_assistant_text.append(chunk)
+                for evt in parser.feed(chunk):
+                    if evt["type"] in ("draft_done", "section_done"):
+                        continue
+                    yield f"data: {_json.dumps(evt)}\n\n"
+        except Exception:
+            log.exception("writer_chat_stream | generation failed")
+            yield f"data: {_json.dumps({'type': 'error', 'message': 'Generation was interrupted. Your saved draft is unchanged. Please retry.'})}\n\n"
+            return
         for evt in parser.flush():
             yield f"data: {_json.dumps(evt)}\n\n"
 

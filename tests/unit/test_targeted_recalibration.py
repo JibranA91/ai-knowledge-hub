@@ -115,7 +115,7 @@ async def test_triage_node_targeted_uses_semantic_search():
     semantic_results = [{"path": "topics/revenue.md", "score": 0.95}]
 
     with (
-        patch("app.services.recalibrate_agent.make_chat_llm", return_value=MagicMock()),
+        patch("app.model.get_chat", return_value=MagicMock()),
         patch("app.services.recalibrate_agent.recalibrate_job") as mock_job_mod,
         patch("app.services.embeddings.embed_text", new_callable=AsyncMock, return_value=[0.1, 0.2]) as mock_embed,
         patch("app.services.wiki_db.semantic_search_wiki", new_callable=AsyncMock, return_value=semantic_results),
@@ -168,7 +168,7 @@ async def test_triage_node_targeted_skips_unsafe_paths():
     ]
 
     with (
-        patch("app.services.recalibrate_agent.make_chat_llm", return_value=MagicMock()),
+        patch("app.model.get_chat", return_value=MagicMock()),
         patch("app.services.recalibrate_agent.recalibrate_job") as mock_job_mod,
         patch("app.services.embeddings.embed_text", new_callable=AsyncMock, return_value=[0.1]),
         patch("app.services.wiki_db.semantic_search_wiki", new_callable=AsyncMock, return_value=semantic_results),
@@ -208,7 +208,7 @@ async def test_triage_node_targeted_skips_unsafe_paths():
 async def test_triage_node_targeted_returns_empty_when_embed_fails():
     """When embed_text returns None, targeted triage yields no candidates."""
     with (
-        patch("app.services.recalibrate_agent.make_chat_llm", return_value=MagicMock()),
+        patch("app.model.get_chat", return_value=MagicMock()),
         patch("app.services.recalibrate_agent.recalibrate_job") as mock_job_mod,
         patch("app.services.embeddings.embed_text", new_callable=AsyncMock, return_value=None),
         patch("app.services.wiki_db.semantic_search_wiki", new_callable=AsyncMock) as mock_search,
@@ -253,7 +253,7 @@ async def test_finalize_node_targeted_prefix_in_log():
         captured_log["entry"] = raw_text
 
     with (
-        patch("app.services.recalibrate_agent.make_chat_llm", return_value=MagicMock()),
+        patch("app.model.get_chat", return_value=MagicMock()),
         patch("app.services.recalibrate_agent.recalibrate_job") as mock_job_mod,
         patch("app.services.wiki_db.append_audit_log", side_effect=fake_append_audit_log),
         patch("app.services.recalibrate_agent.recalibrate_job.persist_finish", new_callable=AsyncMock),
@@ -302,7 +302,7 @@ async def test_finalize_node_full_mode_uses_master_recalibrate_heading():
         captured_log["entry"] = raw_text
 
     with (
-        patch("app.services.recalibrate_agent.make_chat_llm", return_value=MagicMock()),
+        patch("app.model.get_chat", return_value=MagicMock()),
         patch("app.services.recalibrate_agent.recalibrate_job") as mock_job_mod,
         patch("app.services.wiki_db.append_audit_log", side_effect=fake_append_audit_log),
         patch("app.services.recalibrate_agent.recalibrate_job.persist_finish", new_callable=AsyncMock),

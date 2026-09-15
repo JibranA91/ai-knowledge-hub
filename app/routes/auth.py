@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from app import model
 from app.config import settings
 from app.logger import get_logger
 from app.services import auth as auth_service
@@ -26,7 +27,7 @@ async def get_config():
         "company_name": settings.COMPANY_NAME,
         "chat_stream": settings.CHAT_STREAM,
         "max_upload_size_mb": settings.MAX_UPLOAD_SIZE_MB,
-        "embedding_enabled": bool(settings.BEDROCK_EMBEDDING_MODEL_ID),
+        "embedding_enabled": model.embedding_enabled(),
     }
 
 

@@ -13,6 +13,7 @@ import json
 import posixpath
 import zipfile
 
+from app import model
 from app.config import settings
 from app.logger import get_logger
 from app.services.graph import get_graph
@@ -42,11 +43,14 @@ def _is_unsafe_rel(rel: str) -> bool:
 
 def _embeddings_compatible(manifest: dict, emb_map: dict) -> bool:
     """Exported vectors are safe to reuse only when model + dimensions match."""
-    if not emb_map:
+    if not emb_map or not model.embedding_enabled():
         return False
     return (
         manifest.get("embedding_dimensions") == settings.EMBEDDING_DIMENSIONS
-        and (manifest.get("embedding_model") or "") == (settings.BEDROCK_EMBEDDING_MODEL_ID or "")
+        and (manifest.get("embedding_model") or "") == model.model_id_for(model.Role.EMBEDDING)
+        and manifest.get("embedding_provider") == model.provider_name()
+        and manifest.get("embedding_space") == model.embedding_identity()
+        and all(model.valid_embedding(vec) for vec in emb_map.values())
     )
 
 

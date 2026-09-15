@@ -1,6 +1,7 @@
 """Integration test fixtures.
 
-Requires Docker for testcontainers PostgreSQL.
+Requires Docker for testcontainers PostgreSQL with pgvector, or an explicitly
+configured disposable DATABASE_URL with pgvector available.
 All tests in this package are skipped when testcontainers is unavailable.
 
 Fixtures:
@@ -61,7 +62,7 @@ def postgres_container():
         return
     if not _HAS_TC:
         pytest.skip("testcontainers not available")
-    with PostgresContainer("postgres:16-alpine") as container:
+    with PostgresContainer("pgvector/pgvector:pg16") as container:
         yield container
 
 
@@ -266,7 +267,7 @@ async def user_ctx(default_user):
 @pytest.fixture(autouse=True)
 def mock_bedrock():
     with patch(
-        "app.services.bedrock.BedrockService.converse",
+        "app.providers.bedrock.BedrockConverseClient.converse",
         new_callable=AsyncMock,
         return_value='{"issues": [], "suggestions": [], "health_score": 100}',
     ) as mock:
