@@ -1,0 +1,184 @@
+# Friendly model name -> provider-specific ID and adapter capabilities.
+# These are local compatibility declarations, not proof of account access.
+# Add a binding here when extending an existing adapter; never put IDs in .env.
+
+fable5:
+  providers:
+    bedrock:
+      model_id: anthropic.claude-fable-5
+      capabilities: [chat, tools, converse, stream]
+      inference_geos: [us, global]
+
+opus5:
+  providers:
+    bedrock:
+      model_id: anthropic.claude-opus-5
+      capabilities: [chat, tools, converse, stream]
+      inference_geos: [us, global]
+
+opus48:
+  providers:
+    bedrock:
+      model_id: anthropic.claude-opus-4-8
+      capabilities: [chat, tools, converse, stream]
+      inference_geos: [us, global]
+
+opus47:
+  providers:
+    bedrock:
+      model_id: anthropic.claude-opus-4-7
+      capabilities: [chat, tools, converse, stream]
+      inference_geos: [us, global]
+
+opus46:
+  providers:
+    bedrock:
+      model_id: anthropic.claude-opus-4-6-v1
+      capabilities: [chat, tools, converse, stream]
+      inference_geos: [us, global]
+
+opus45:
+  providers:
+    bedrock:
+      model_id: anthropic.claude-opus-4-5-20251101-v1:0
+      capabilities: [chat, tools, converse, stream]
+      inference_geos: [us, global]
+    anthropic:
+      model_id: claude-opus-4-5-20251101
+      capabilities: [chat, tools, converse, stream]
+      temperature: true
+
+opus41:
+  providers:
+    bedrock:
+      model_id: anthropic.claude-opus-4-1-20250805-v1:0
+      capabilities: [chat, tools, converse, stream]
+      inference_geos: [us]
+
+sonnet5:
+  providers:
+    bedrock:
+      model_id: anthropic.claude-sonnet-5
+      capabilities: [chat, tools, converse, stream]
+      inference_geos: [us, global]
+
+sonnet46:
+  providers:
+    bedrock:
+      model_id: anthropic.claude-sonnet-4-6
+      capabilities: [chat, tools, converse, stream]
+      inference_geos: [us, global]
+
+sonnet45:
+  providers:
+    bedrock:
+      model_id: anthropic.claude-sonnet-4-5-20250929-v1:0
+      capabilities: [chat, tools, converse, stream]
+      inference_geos: [us, global]
+    anthropic:
+      model_id: claude-sonnet-4-5-20250929
+      capabilities: [chat, tools, converse, stream]
+      temperature: true
+
+sonnet4:
+  providers:
+    bedrock:
+      model_id: anthropic.claude-sonnet-4-20250514-v1:0
+      capabilities: [chat, tools, converse, stream]
+      inference_geos: [us, global]
+
+haiku45:
+  providers:
+    bedrock:
+      model_id: anthropic.claude-haiku-4-5-20251001-v1:0
+      capabilities: [chat, tools, converse, stream]
+      inference_geos: [us, global]
+    anthropic:
+      model_id: claude-haiku-4-5-20251001
+      capabilities: [chat, tools, converse, stream]
+      temperature: true
+
+haiku3:
+  providers:
+    bedrock:
+      model_id: anthropic.claude-3-haiku-20240307-v1:0
+      capabilities: [chat, tools, converse, stream]
+      inference_geos: [us]
+
+llama4maverick:
+  providers:
+    bedrock:
+      model_id: meta.llama4-maverick-17b-instruct-v1:0
+      capabilities: [chat, tools, converse, stream]
+      inference_geos: [us]
+
+llama4scout:
+  providers:
+    bedrock:
+      model_id: meta.llama4-scout-17b-instruct-v1:0
+      capabilities: [chat, tools, converse, stream]
+      inference_geos: [us]
+
+titanembedv2:
+  providers:
+    bedrock:
+      model_id: amazon.titan-embed-text-v2:0
+      capabilities: [embedding]
+      dimensions: [256, 512, 1024]
+
+titanembedv1:
+  providers:
+    bedrock:
+      model_id: amazon.titan-embed-text-v1
+      capabilities: [embedding]
+      dimensions: [1536]
+
+cohereembedv4:
+  providers:
+    bedrock:
+      model_id: cohere.embed-v4:0
+      capabilities: [embedding]
+      dimensions: [256, 512, 1024, 1536]
+      unavailable_reason: The Bedrock adapter does not yet parse Cohere V4 responses; use titanembedv1 or disable MODEL_EMBEDDING
+
+cohereembeden:
+  providers:
+    bedrock:
+      model_id: cohere.embed-english-v3
+      capabilities: [embedding]
+      dimensions: [1024]
+
+cohereembedml:
+  providers:
+    bedrock:
+      model_id: cohere.embed-multilingual-v3
+      capabilities: [embedding]
+      dimensions: [1024]
+
+gpt41mini:
+  providers:
+    openai:
+      model_id: gpt-4.1-mini-2025-04-14
+      capabilities: [chat, tools, converse, stream]
+      temperature: true
+
+gpt41:
+  providers:
+    openai:
+      model_id: gpt-4.1-2025-04-14
+      capabilities: [chat, tools, converse, stream]
+      temperature: true
+
+embed3small:
+  providers:
+    openai:
+      model_id: text-embedding-3-small
+      capabilities: [embedding]
+      dimensions: [1536]
+
+embed3large:
+  providers:
+    openai:
+      model_id: text-embedding-3-large
+      capabilities: [embedding]
+      dimensions: [1536]

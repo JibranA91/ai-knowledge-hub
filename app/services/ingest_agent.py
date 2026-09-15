@@ -38,7 +38,7 @@ def _get_write_semaphore() -> asyncio.Semaphore:
     if _write_page_semaphore is None:
         _write_page_semaphore = asyncio.Semaphore(settings.WRITE_PAGE_CONCURRENCY)
     return _write_page_semaphore
-from app.services.bedrock import make_chat_llm
+from app import model
 from app.utils import (
     PAGE_TYPES,
     infer_type_from_path,
@@ -223,7 +223,7 @@ def _make_planner_nodes():
         log.info("Tool: read_existing_page | path=%s | found=%s", path, bool(content))
         return content if content else f"[Page not found: {path}]"
 
-    planner_llm = make_chat_llm(settings.BEDROCK_INGEST_MODEL_ID, max_tokens=4096, operation="ingest_plan").bind_tools([read_existing_page])
+    planner_llm = model.get_chat(model.Role.INGEST_PLAN, max_tokens=4096).bind_tools([read_existing_page])
 
     async def planner_node(state: IngestState) -> dict:
         round_num = sum(1 for m in state["messages"] if hasattr(m, "tool_calls") and m.tool_calls) + 1
@@ -383,7 +383,7 @@ Rules:
 def _make_writer_nodes():
     """Returns (write_pages_node, finalize_node)."""
 
-    writer_llm = make_chat_llm(settings.BEDROCK_INGEST_WRITER_MODEL_ID, max_tokens=8192, operation="ingest_write")
+    writer_llm = model.get_chat(model.Role.INGEST_WRITE, max_tokens=8192)
     _MAX_CONTINUATIONS = 2
 
     async def _invoke_with_continuation(messages: list) -> str:

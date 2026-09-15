@@ -287,7 +287,7 @@ async def clone_org(source_org_id: str, new_name: str) -> str | None:
 
     from app.services.wiki_db import _embedding_col_exists
     page_cols = ["path", "title", "tags", "summary", "content", "frontmatter",
-                 "ingested_from", "s3_key", "created_at", "updated_at"]
+                 "ingested_from", "s3_key", "created_at", "updated_at", "embedding_space"]
     if await _embedding_col_exists():
         page_cols.append("embedding")
     col_list = ", ".join(page_cols)

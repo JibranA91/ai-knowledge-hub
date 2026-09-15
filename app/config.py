@@ -1,34 +1,59 @@
+from urllib.parse import urlsplit
+
+from pydantic import SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings
+
+from app.providers.base import UnknownModelError
+
+TEXT_MODEL_SETTINGS = (
+    "MODEL_INGEST_PLAN", "MODEL_INGEST_WRITE", "MODEL_QUERY",
+    "MODEL_RECALIBRATE", "MODEL_DRAFT_AGENT", "MODEL_EDIT",
+)
+
+
+def _reject_obsolete_models(values):
+    obsolete = sorted(str(key).upper() for key in values
+                      if str(key).upper().startswith("BEDROCK_") and str(key).upper().endswith("_MODEL_ID"))
+    if obsolete:
+        raise UnknownModelError(
+            f"Obsolete model settings: {', '.join(obsolete)}. Remove these keys from the environment and .env; "
+            "select friendly names with MODEL_DEFAULT and MODEL_* using app/model_catalog.yaml.")
 
 
 class Settings(BaseSettings):
+    # ── LLM provider ───────────────────────────────────────────────────────
+    # Which backend serves every model call. All connections are created in
+    # app/providers/<name>.py and reached through app/model.py — nothing else
+    # in the codebase talks to an LLM vendor directly.
+    # Registered providers: see app/providers/__init__.py.
+    LLM_PROVIDER: str = "bedrock"
+    # Direct API-key/endpoint adapters; Bedrock continues to use AWS auth.
+    LLM_API_KEY: SecretStr = SecretStr("")
+    LLM_BASE_URL: str = ""
+    MODEL_DEFAULT: str = "haiku45"
+
     AWS_REGION: str = "us-east-1"
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
     ASSUMED_ROLE_ARN: str = ""
     ASSUMED_ROLE_SESSION_NAME: str = "WikiAgentSession"
     ASSUMED_ROLE_DURATION: int = 3600
-    BEDROCK_INGEST_MODEL_ID: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-    # Page renderer used inside the ingest pipeline — writes the markdown body
-    # of an individual planned page. Single-shot, no reasoning loop.
-    BEDROCK_INGEST_WRITER_MODEL_ID: str = "us.meta.llama4-maverick-17b-instruct-v1:0"
-    BEDROCK_QUERY_MODEL_ID: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-    BEDROCK_RECALIBRATE_MODEL_ID: str = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
-    # Conversational AI Writer agent (the chat-driven document authoring
-    # flow). Multi-turn reasoner — asks clarifying questions, drafts the page,
-    # accepts revisions. Defaults to the query model.
-    BEDROCK_DRAFT_AGENT_MODEL_ID: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-    # Inline AI editor — rewrites a whole page or one section against an
-    # instruction. Single-shot (no reasoning loop); defaults to the draft model.
-    BEDROCK_EDIT_MODEL_ID: str = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    # Friendly names only; provider IDs and capabilities live in model_catalog.yaml.
+    # Omitted text roles inherit MODEL_DEFAULT. Explicit blanks are invalid.
+    MODEL_INGEST_PLAN: str = ""
+    MODEL_INGEST_WRITE: str = ""
+    MODEL_QUERY: str = ""
+    MODEL_RECALIBRATE: str = ""
+    MODEL_DRAFT_AGENT: str = ""
+    MODEL_EDIT: str = ""
+    # Embeddings are opt-in and never inherit the text default.
+    MODEL_EMBEDDING: str = ""
 
-    # ── Back-compat for the old name. If BEDROCK_WRITER_MODEL_ID is set in
-    # the environment, pydantic-settings will populate this; we copy it onto
-    # BEDROCK_INGEST_WRITER_MODEL_ID in model_post_init below.
-    BEDROCK_WRITER_MODEL_ID: str = ""
-    # optional semantic embeddings. Leave empty to disable vector search.
-    # Recommended: amazon.titan-embed-text-v2:0 (1536-dim) or cohere.embed-english-v3 (1024-dim).
-    BEDROCK_EMBEDDING_MODEL_ID: str = "amazon.titan-embed-text-v1"
+    # Cross-region inference profile geography for Bedrock text models: "us",
+    # "eu", "global", … It becomes the model ID's prefix (us.anthropic.…).
+    # Leave empty to call foundation models directly with no profile.
+    BEDROCK_INFERENCE_GEO: str = "us"
+
     EMBEDDING_DIMENSIONS: int = 1536
 
     # Deployment environment. When set to "production", the app refuses to boot
@@ -92,13 +117,36 @@ class Settings(BaseSettings):
     DATA_BUCKET: str = ""           # S3 bucket name; used when STORAGE_BACKEND=s3
     AWS_ENDPOINT_URL: str = ""      # Override S3 endpoint (advanced); usually empty
 
-    model_config = {"env_file": ".env", "extra": "ignore"}
+    model_config = {"env_file": ".env", "extra": "ignore", "hide_input_in_errors": True}
+
+    @classmethod
+    def settings_customise_sources(cls, settings_cls, init_settings, env_settings,
+                                   dotenv_settings, file_secret_settings):
+        # Environment sources discard unknown fields. Check their original keys
+        # first, including obsolete keys shadowed by newer settings or left blank.
+        _reject_obsolete_models(init_settings.init_kwargs)
+        _reject_obsolete_models(env_settings.env_vars)
+        _reject_obsolete_models(dotenv_settings.env_vars)
+        return init_settings, env_settings, dotenv_settings, file_secret_settings
+
+    @field_validator("LLM_BASE_URL")
+    @classmethod
+    def validate_base_url(cls, value: str, info: ValidationInfo) -> str:
+        value = value.strip()
+        if (info.data.get("LLM_PROVIDER") or "bedrock").strip().lower() == "bedrock":
+            return value  # Bedrock never uses the direct API endpoint.
+        if value:
+            url = urlsplit(value)
+            if (url.scheme not in {"http", "https"} or not url.hostname
+                    or url.username is not None or url.password is not None
+                    or url.query or url.fragment):
+                raise ValueError("LLM_BASE_URL must be an HTTP(S) endpoint without credentials, query or fragment")
+        return value
 
     def model_post_init(self, __context) -> None:
-        # If the legacy var BEDROCK_WRITER_MODEL_ID is set in the environment,
-        # promote it onto the new name so existing deployments keep working.
-        if self.BEDROCK_WRITER_MODEL_ID:
-            object.__setattr__(self, "BEDROCK_INGEST_WRITER_MODEL_ID", self.BEDROCK_WRITER_MODEL_ID)
+        for name in TEXT_MODEL_SETTINGS:
+            if name not in self.model_fields_set:
+                object.__setattr__(self, name, self.MODEL_DEFAULT.strip())
 
         # Refuse to boot in production while security-sensitive settings are
         # left at their shipped defaults. These defaults are convenient for

@@ -233,7 +233,7 @@ async def test_analyze_node_batches_and_merges():
     graph_obj.ensure_loaded = AsyncMock(return_value=graph_obj)
 
     with (
-        patch("app.services.recalibrate_agent.make_chat_llm", return_value=llm),
+        patch("app.model.get_chat", return_value=llm),
         patch("app.services.recalibrate_agent.recalibrate_job") as mock_job_mod,
         patch("app.services.graph.get_graph", return_value=graph_obj),
     ):
@@ -273,7 +273,7 @@ async def test_analyze_node_tolerates_truncated_batch():
     graph_obj.ensure_loaded = AsyncMock(return_value=graph_obj)
 
     with (
-        patch("app.services.recalibrate_agent.make_chat_llm", return_value=llm),
+        patch("app.model.get_chat", return_value=llm),
         patch("app.services.recalibrate_agent.recalibrate_job") as mock_job_mod,
         patch("app.services.graph.get_graph", return_value=graph_obj),
     ):
@@ -303,7 +303,7 @@ async def test_analyze_node_all_batches_failing_reports_error():
     graph_obj.ensure_loaded = AsyncMock(return_value=graph_obj)
 
     with (
-        patch("app.services.recalibrate_agent.make_chat_llm", return_value=llm),
+        patch("app.model.get_chat", return_value=llm),
         patch("app.services.recalibrate_agent.recalibrate_job") as mock_job_mod,
         patch("app.services.graph.get_graph", return_value=graph_obj),
     ):
@@ -418,7 +418,7 @@ async def test_analyze_node_reconciliation_folds_cross_batch_findings():
     graph_obj.ensure_loaded = AsyncMock(return_value=graph_obj)
 
     with (
-        patch("app.services.recalibrate_agent.make_chat_llm", return_value=llm),
+        patch("app.model.get_chat", return_value=llm),
         patch("app.services.recalibrate_agent.recalibrate_job") as mock_job_mod,
         patch("app.services.graph.get_graph", return_value=graph_obj),
     ):
@@ -453,7 +453,7 @@ async def test_analyze_node_reconciliation_drops_hallucinated_paths():
     graph_obj.ensure_loaded = AsyncMock(return_value=graph_obj)
 
     with (
-        patch("app.services.recalibrate_agent.make_chat_llm", return_value=llm),
+        patch("app.model.get_chat", return_value=llm),
         patch("app.services.recalibrate_agent.recalibrate_job") as mock_job_mod,
         patch("app.services.graph.get_graph", return_value=graph_obj),
     ):
@@ -484,7 +484,7 @@ async def test_analyze_node_single_batch_skips_reconciliation():
     graph_obj.ensure_loaded = AsyncMock(return_value=graph_obj)
 
     with (
-        patch("app.services.recalibrate_agent.make_chat_llm", return_value=llm),
+        patch("app.model.get_chat", return_value=llm),
         patch("app.services.recalibrate_agent.recalibrate_job") as mock_job_mod,
         patch("app.services.graph.get_graph", return_value=graph_obj),
     ):

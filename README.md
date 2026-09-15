@@ -9,8 +9,7 @@ AI Knowledge Hub is an AI-maintained internal wiki. Unlike a traditional documen
 ## Requirements
 
 - **Docker + Docker Compose** (recommended) — or Python 3.12+ with a PostgreSQL 16 instance for local dev.
-- **An AWS account with Bedrock access**, with the configured model IDs enabled in your region (see the `BEDROCK_*` variables in [Configuration](#configuration-reference)). All LLM work — planning, page writing, query, recalibration, and optional embeddings — runs through AWS Bedrock.
-  > **Note:** Bedrock is currently the only supported LLM provider. Multi-provider support (Anthropic API, OpenAI, local models) is on the roadmap — see the `BEDROCK_*` model IDs in [Configuration](#configuration-reference) for what's wired today.
+- **Model access:** an AWS account with Bedrock access, a direct Anthropic API key, or an OpenAI API key. Select `LLM_PROVIDER=bedrock`, `anthropic`, or `openai`; see [Anthropic setup](#direct-anthropic-setup) and [OpenAI setup](#direct-openai-setup). Other providers are not implemented.
 - **Optional:** an AWS S3 bucket — only if you set `STORAGE_BACKEND=s3`. The default `local` backend stores raw uploads on a Docker volume and needs no S3.
 
 ---
@@ -52,6 +51,299 @@ The `STORAGE_BACKEND` variable controls **only raw uploaded files** (PDFs, DOCXs
 | `s3` | AWS S3 bucket named `DATA_BUCKET` |
 
 PostgreSQL stores auth tokens, ingest jobs, chat sessions, recalibration state, wiki pages (content + FTS index), graph cache, schema, and audit logs.
+
+### The LLM layer
+
+Every model call in the app goes through one module, [`app/model.py`](app/model.py). **No LLM connection is created anywhere else** — `tests/unit/test_no_direct_llm_clients.py` fails the build if one is.
+
+```
+call sites  ──►  app/model.py  ──►  app/providers/<vendor>.py  ──►  vendor SDK
+(ask for a role)  (role → model name,  (name → the vendor's model ID;
+                   usage tracking)      the only place a client is built)
+```
+
+Call sites ask for a **role** — what the model is for — never a model ID:
+
+```python
+from app import model
+
+llm    = model.get_chat(model.Role.INGEST_PLAN, max_tokens=4096)  # LangChain runnable, supports bind_tools
+client = model.get_converse(model.Role.QUERY)                     # converse + streaming
+vec    = await model.embed("some text")                           # None when embeddings are disabled
+```
+
+Config selects a **friendly model name**. The shared [model catalogue](app/model_catalog.yaml)
+maps it to the active provider's concrete ID. A provider switch works only when that
+same model has a binding for the new provider; the app never substitutes another model.
+
+| Role | Used by | Configured with | Built-in default |
+|---|---|---|---|
+| `INGEST_PLAN` | ingest planner (tool-calling loop) | `MODEL_INGEST_PLAN` | inherits `MODEL_DEFAULT` |
+| `INGEST_WRITE` | ingest page renderer | `MODEL_INGEST_WRITE` | inherits `MODEL_DEFAULT` |
+| `QUERY` | chat / Q&A | `MODEL_QUERY` | inherits `MODEL_DEFAULT` |
+| `RECALIBRATE` | wiki-wide analyze + rewrite | `MODEL_RECALIBRATE` | inherits `MODEL_DEFAULT` |
+| `DRAFT_AGENT` | conversational AI Writer | `MODEL_DRAFT_AGENT` | inherits `MODEL_DEFAULT` |
+| `EDIT` | inline page/section editor | `MODEL_EDIT` | inherits `MODEL_DEFAULT` |
+| `EMBEDDING` | semantic search vectors | `MODEL_EMBEDDING` | *(unset — BM25 only)* |
+
+### Simple model configuration
+
+Use one model for all text roles, with optional role-specific overrides:
+
+```dotenv
+LLM_PROVIDER=bedrock
+MODEL_DEFAULT=haiku45
+MODEL_EMBEDDING=
+```
+
+Bedrock still needs your existing AWS credentials/role and region. This example
+uses an existing model name, not a guarantee of account access or suitability;
+test it before switching. Your existing `.env` is not rewritten by this feature.
+
+Precedence is **explicit `MODEL_<ROLE>` > `MODEL_DEFAULT`**. The built-in
+`MODEL_DEFAULT` is `haiku45`; there are no separate hidden role defaults.
+Explicitly blank text roles fail validation, as do roles inheriting a blank default.
+Embeddings never inherit the text default and are disabled unless selected explicitly.
+
+Remove/comment out role overrides if you want them to inherit the shared default.
+The example environment keeps explicit recalibration/edit overrides; comment those
+out too if you want every text role to use the shared default.
+
+`LLM_API_KEY` (masked in settings representations) and `LLM_BASE_URL` are shared
+settings used by the direct Anthropic and OpenAI adapters.
+`LLM_PROVIDER` alone selects the adapter; credentials never trigger an automatic
+switch or fallback. Bedrock ignores both direct API settings, even when non-empty,
+and continues to use AWS authentication and `AWS_REGION`. For direct API providers,
+endpoint URLs must be HTTP(S) and cannot contain embedded credentials, query
+strings, or fragments. Keep keys in environment variables or your ignored `.env`,
+never in version control.
+
+### Test a model connection
+
+This command loads configuration without starting the application, running
+migrations, or connecting to the wiki database:
+
+```sh
+python -m app.check_models
+```
+
+By default it only validates configuration and lists **NOT TESTED** live checks.
+It cannot prove credentials, access or runtime capabilities without a request.
+To authorize small synthetic requests and acknowledge possible provider charges:
+
+```sh
+python -m app.check_models --live --yes
+# Or test only one role (repeat --role to select more):
+python -m app.check_models --live --yes --role query
+```
+
+For an already-built running container, use
+`docker compose exec wiki python -m app.check_models` and append the same flags.
+The container must contain this code and the intended settings. These commands
+do not modify configuration, generate wiki content or save usage rows to the database.
+Provider-side billing still applies. SDK tracing is disabled in the check process.
+
+The live checks exercise the clients each role uses: a structured tool call for
+ingest planning (the tool is never executed), LangChain responses for ingest writing
+and recalibration, direct responses/streams for chat, AI Writer and editing, and
+vector validation when embeddings are enabled. Each unique model/capability pair
+is tested once. Failures produce a nonzero exit code; disabled embeddings are skipped.
+Provider exception details are suppressed to avoid exposing credentials or endpoints.
+Requests use small output limits but remain subject to the provider's retries/timeouts.
+A pass is a connectivity smoke test, not a guarantee of real-document quality.
+
+So switching the chat model is one word:
+
+```diff
+- MODEL_QUERY=haiku45
++ MODEL_QUERY=sonnet5
+```
+
+### One model catalogue
+
+[`app/model_catalog.yaml`](app/model_catalog.yaml) is the single source of truth for
+all names, provider IDs, capabilities, embedding dimensions, sampling support and
+Bedrock inference geographies. [`app/model_catalog.py`](app/model_catalog.py) validates
+and resolves it; adapters no longer have separate catalogues.
+
+For example, this one entry describes the same model on two providers:
+
+```yaml
+haiku45:
+  providers:
+    bedrock:
+      model_id: anthropic.claude-haiku-4-5-20251001-v1:0
+      capabilities: [chat, tools, converse, stream]
+      inference_geos: [us, global]
+    anthropic:
+      model_id: claude-haiku-4-5-20251001
+      capabilities: [chat, tools, converse, stream]
+      temperature: true
+```
+
+**Names with Bedrock mappings:**
+
+| Family | Names |
+|---|---|
+| Claude | `fable5` `opus5` `opus48` `opus47` `opus46` `opus45` `opus41` `sonnet5` `sonnet46` `sonnet45` `sonnet4` `haiku45` `haiku3` |
+| Llama | `llama4maverick` `llama4scout` |
+| Embeddings | `titanembedv2` `titanembedv1` `cohereembedv4` `cohereembeden` `cohereembedml` |
+
+Matching ignores case and punctuation — `haiku45`, `haiku-4.5` and `Haiku 4.5` are the same model. Names resolve to Bedrock cross-region inference profile IDs using `BEDROCK_INFERENCE_GEO` (`us` by default) as the prefix:
+
+```
+MODEL_QUERY=haiku45  +  BEDROCK_INFERENCE_GEO=us
+  → us.anthropic.claude-haiku-4-5-20251001-v1:0
+```
+
+Set `BEDROCK_INFERENCE_GEO=global` for the global profile, or leave it blank to call the foundation model directly with no profile. Embedding models are plain foundation models and are never prefixed.
+
+**Names only:** vendor IDs and inference-profile ARNs are not passed through from
+`MODEL_*`. Unknown names, unavailable provider/model pairs and incompatible role
+capabilities fail before model calls. To add a model supported by an existing
+adapter, add its friendly name, provider binding and accurate metadata to the YAML
+file, then run the offline check. No adapter/configuration-code edits are needed.
+New API formats still require adapter work; a catalogue entry cannot provide it.
+The catalogue is loaded once per process; rebuild/restart after changing it.
+
+Bedrock profile availability is checked against the entry's `inference_geos`.
+A blank geography selects the foundation ID but does not guarantee AWS permits
+direct invocation. To see what your account exposes:
+
+```bash
+aws bedrock list-inference-profiles \
+  --query 'inferenceProfileSummaries[].inferenceProfileId' --output table
+```
+
+Token usage is recorded centrally in [`app/providers/usage.py`](app/providers/usage.py), so every call is logged to `usage_log` regardless of backend.
+
+> **Breaking configuration change:** `BEDROCK_*_MODEL_ID` keys (including the old
+> `BEDROCK_WRITER_MODEL_ID`) are rejected, even when blank or overridden. Remove
+> them from both the shell/container environment and `.env`. Select friendly names
+> using `MODEL_DEFAULT` and optional role overrides. Raw IDs must be moved into
+> the catalogue rather than copied into `MODEL_*`. AWS credential, region and
+> inference-geography settings are unchanged. Deployment files are not auto-migrated.
+
+### Direct Anthropic setup
+
+The `anthropic` adapter supports the app's text responses, streaming and agent
+tool calls through the direct Messages API, not through Bedrock. It uses the
+official Anthropic SDK and LangChain integration.
+
+```dotenv
+LLM_PROVIDER=anthropic
+LLM_API_KEY=<your-direct-anthropic-api-key>
+LLM_BASE_URL=
+MODEL_DEFAULT=haiku45
+MODEL_EMBEDDING=
+```
+
+Remove/comment out text-role overrides you want the shared default to replace.
+The central catalogue maps `haiku45`, `sonnet45`, and `opus45` to explicit Claude 4.5
+snapshot IDs. Raw `claude-*` or Bedrock IDs are not accepted as role settings.
+Account access and model availability must be checked live; selecting a listed
+name does not guarantee access.
+
+`LLM_BASE_URL` defaults to `https://api.anthropic.com`. Set it only for a trusted
+Anthropic-compatible gateway: it receives your key and prompts. Ambient
+`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, and `ANTHROPIC_BASE_URL` do not override
+the app's explicit settings. No AWS credentials are used for these model calls.
+With local storage, unused AWS role-refresh tasks are skipped. S3 storage still
+requires its own AWS configuration.
+
+Anthropic has no embedding API, so explicitly leave `MODEL_EMBEDDING=` blank.
+Keyword search remains available; this does not delete existing vectors. The
+current single-provider design cannot combine Anthropic chat with Bedrock
+embeddings. See [Anthropic's embeddings documentation](https://platform.claude.com/docs/en/build-with-claude/embeddings).
+
+Install updated dependencies or rebuild the container, then check the intended
+configuration before starting an ingest:
+
+```sh
+python -m app.check_models
+python -m app.check_models --live --yes
+```
+
+The live command sends synthetic prompts and may incur charges. SDK-backed tests
+use fake HTTP responses to verify request formats, tool calls, token accounting,
+retries, interrupted streams and cancellation; they do not establish live account
+access. Direct streams fail if the terminal event is missing and are never
+replayed after partial output. SDK retries are bounded to two retries before a
+response, with a 120-second request timeout; direct calls are limited to 20
+concurrent requests per model/process. Usage is recorded on completed calls,
+including cache-input tokens; interrupted calls can still be billed by Anthropic.
+The catalogue's `temperature` flag controls sampling parameters. When false or
+omitted, the direct adapter uses the provider's sampling defaults.
+
+### Direct OpenAI setup
+
+The `openai` adapter supports text responses, streaming, agent tool calls, and
+optional embeddings through the official SDK and LangChain integration. It uses
+the [Responses API](https://developers.openai.com/api/reference/python/resources/responses/methods/create),
+not Chat Completions; arbitrary OpenAI-compatible servers and Azure deployments
+are not guaranteed compatible.
+
+```dotenv
+LLM_PROVIDER=openai
+LLM_API_KEY=<your-openai-api-key>
+LLM_BASE_URL=
+MODEL_DEFAULT=gpt41mini
+MODEL_EMBEDDING=embed3small
+```
+
+Remove/comment out incompatible text-role overrides before switching, or select
+names that have OpenAI bindings. The aliases `gpt41mini` and `gpt41` select the
+explicit 2025-04-14 snapshots. Additional models require catalogue entries with
+accurate capabilities; raw IDs are not accepted in settings. The catalogue's
+`temperature` flag controls whether sampling parameters are sent.
+Account access and model availability still require a live check.
+
+`LLM_BASE_URL` defaults to `https://api.openai.com/v1`. Custom gateways must be
+trusted with your prompts and API key and implement Responses (plus embeddings
+if enabled). The app explicitly supplies its key and URL rather than adopting
+ambient `OPENAI_API_KEY`/`OPENAI_BASE_URL` values. Model calls need no AWS credentials;
+S3 storage still does. A ChatGPT subscription is not an API key.
+
+`embed3small` and `embed3large` map to `text-embedding-3-small` and
+`text-embedding-3-large`. Both request exactly 1,536 dimensions to fit this app's
+database; see [embedding dimensions](https://developers.openai.com/api/docs/guides/embeddings).
+Leave `MODEL_EMBEDDING=` blank for keyword-only search. Existing vectors from
+other models are preserved but excluded from semantic search until regenerated
+with the selected model. Switching providers does not automatically re-embed
+existing pages. Chat and embeddings currently use the same provider and key.
+
+Responses are sent with `store=false`; conversation history remains app-managed.
+This is not a zero-data-retention guarantee: prompts still leave your deployment
+and your provider's data policies apply. Streams require a completed terminal
+event, reject incomplete results, and are never replayed after partial output.
+Requests have two SDK retries, a 120-second timeout and a 20-call per-model/process
+async concurrency limit. Cancellation closes clients and releases capacity.
+Agent text is normalized for the existing ingest/recalibration parsers while
+preserving tool calls. Text usage is tracked centrally; embedding usage and
+interrupted calls without final usage totals are not included in the usage log.
+
+Install updated dependencies or rebuild the image before testing:
+
+```sh
+python -m app.check_models
+python -m app.check_models --live --yes
+```
+
+The first command is offline. The second sends synthetic prompts/embeddings and
+can incur charges. Automated tests exercise real SDK encoding/decoding with fake
+HTTP responses, plus draft persistence in a disposable database; they do not
+prove access to your account's models. Existing deployment settings are not
+changed automatically.
+
+**Adding another provider** (Azure, Ollama, etc.):
+
+1. Implement the `Provider` protocol from [`app/providers/base.py`](app/providers/base.py) in `app/providers/<name>.py`: local connection validation, client factories and API payload handling.
+2. Register it in `app/providers/__init__.py`.
+3. Add its model bindings and capabilities in [`app/model_catalog.yaml`](app/model_catalog.yaml).
+4. Select `LLM_PROVIDER` and friendly names, configure credentials, and verify the adapter with tests and explicit live probes.
+
+Application call sites still select roles through `app.model`; they do not change.
+The old `app/services/bedrock.py` compatibility shim has been removed.
 
 ---
 
@@ -271,33 +563,43 @@ Wiki pages are mirrored into a PostgreSQL `wiki_pages` table with a `tsvector GE
 
 ### Semantic embeddings
 
-**Hybrid search is on by default.** `BEDROCK_EMBEDDING_MODEL_ID` defaults to `amazon.titan-embed-text-v1` (1536-dim), so retrieval combines **BM25 (weight 0.4) + cosine similarity (weight 0.6)** out of the box. `GET /api/auth/config` reports `embedding_enabled: true`.
+`MODEL_EMBEDDING=titanembedv1` enables 1536-dimensional embeddings when pgvector
+is available. Set `MODEL_EMBEDDING=` to disable embedding calls and use keyword
+search. Embeddings are disabled by default; legacy embedding settings are rejected.
 
-While enabled (the default):
-- Every page write generates and stores a `vector(1536)` embedding in the `wiki_pages` table (via an `IVFFlat` index for approximate nearest-neighbour search).
-- `_find_relevant_pages()` in the query/chat pipeline uses the hybrid SQL query instead of an LLM index scan — eliminating one Bedrock call per user question.
-- A query with no keyword overlap with the answer (e.g. "distributed coordination" matching a page titled "pg_advisory_xact_lock") is still found through vector similarity.
+The database currently stores `vector(1536)`. Changing `EMBEDDING_DIMENSIONS`
+does not resize that column. Startup rejects incompatible known models and
+dimensions. Titan V1 was verified through the provider with a live Bedrock request.
+Cohere Embed V4 can also produce 1536 dimensions, but the current response parser
+does not handle its typed embedding response; its catalogue binding explicitly
+rejects selection until that adapter support is implemented.
+Dimension validation alone does not establish runtime compatibility. Titan V2
+(256/512/1024) and Cohere Embed V3 (1024) require a separate storage migration
+before they can be used here. See [AWS's Titan documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/titan-embedding-models.html)
+and [Cohere Embed V4 documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-embed-v4.html).
 
-**To disable vector search** — BM25-only, no Bedrock embedding calls, no pgvector queries — set the variable to empty:
+Each new vector records its provider, resolved model ID and dimensions. Search
+compares vectors only when that identity matches the current model. Compatible
+pages use keyword/cosine weights of 0.4/0.6; pages without compatible vectors
+retain keyword-only scoring. A failed embedding during an edit invalidates the
+old vector's identity so stale content is not used for semantic matching.
 
-```env
-BEDROCK_EMBEDDING_MODEL_ID=
-```
+**Upgrade and model changes:** migration 028 leaves existing vectors untagged,
+because their originating model cannot be inferred safely. Those pages remain
+available to keyword search. They acquire current vectors on their next rewrite
+or re-ingestion. This update does not automatically call a model to re-embed the
+corpus. For full semantic coverage after a model change, re-ingest the affected
+sources. Models with equal dimensions can still have incompatible vector spaces.
 
-With embeddings off, the system uses BM25 and falls back to the LLM-based index scan when BM25 returns no results. To switch models instead, set both the model id and its dimension count:
+Exports include vectors only for the current embedding identity. Imports reuse
+vectors only when provider, model, identity, dimensions and vector contents are
+valid; old bundles without identity metadata still import their pages, but
+regenerate vectors when embeddings are enabled.
 
-```env
-BEDROCK_EMBEDDING_MODEL_ID=amazon.titan-embed-text-v2:0
-EMBEDDING_DIMENSIONS=1536
-```
-
-Supported models:
-| Model ID | Dimensions |
-|---|---|
-| `amazon.titan-embed-text-v1` | 1536 (default) |
-| `amazon.titan-embed-text-v2:0` | 1536 |
-| `cohere.embed-english-v3` | 1024 — set `EMBEDDING_DIMENSIONS=1024` |
-| `cohere.embed-multilingual-v3` | 1024 — set `EMBEDDING_DIMENSIONS=1024` |
+Startup validates catalogue capabilities and profile geographies locally, not
+account access or live availability. Models without a matching catalogue binding
+are rejected; add their IDs and capabilities there before selecting them by name.
+Malformed runtime vectors fall back to keyword search instead of reaching SQL.
 
 ### Paginated wiki listing
 
@@ -366,7 +668,7 @@ curl -H "Authorization: Bearer <token>" \
 
 | Parameter | Default | Description |
 |---|---|---|
-| `include_embeddings` | `true` | Include pre-computed page embeddings in the ZIP. Only has effect when `BEDROCK_EMBEDDING_MODEL_ID` is set. |
+| `include_embeddings` | `true` | Include pre-computed page embeddings in the ZIP. Only has effect when `MODEL_EMBEDDING` is set. |
 
 ### ZIP contents
 
@@ -554,7 +856,7 @@ Open a page → AI Edit
 | `reconcile` | Resolve contradictions against another page (`reconcile_with`) |
 | `custom` | Follow a free-text `instruction` |
 
-**Model:** `BEDROCK_EDIT_MODEL_ID` (default Claude Sonnet 4.5). Rate-limited with the chat limiter and counted against the token quota.
+**Model:** `MODEL_EDIT` (inherits `MODEL_DEFAULT`; `.env.example` overrides it to `sonnet45`). Rate-limited with the chat limiter and counted against the token quota.
 
 ---
 
@@ -783,13 +1085,13 @@ All four require `can_view_wiki` and are strictly org-scoped to `target_kind='pa
 
 | Role | Env var | Default | Responsibility |
 |---|---|---|---|
-| **Ingest Planner** | `BEDROCK_INGEST_MODEL_ID` | Claude Haiku 4.5 | Reads documents, builds page plans, plan chat |
-| **Ingest Writer** | `BEDROCK_INGEST_WRITER_MODEL_ID` | Llama 4 Maverick | Renders individual wiki pages from a planned spec (single-shot) |
-| **Query / Chat** | `BEDROCK_QUERY_MODEL_ID` | Claude Haiku 4.5 | Answers questions, streaming chat |
-| **Recalibrate** | `BEDROCK_RECALIBRATE_MODEL_ID` | Claude Sonnet 4.5 | Deep analysis and full-wiki rewriting |
-| **Draft Agent** | `BEDROCK_DRAFT_AGENT_MODEL_ID` | Claude Haiku 4.5 | Conversational AI Writer — multi-turn drafting, Q&A, section revisions |
-| **Inline Editor** | `BEDROCK_EDIT_MODEL_ID` | Claude Sonnet 4.5 | Inline AI page/section rewrites (single-shot) |
-| **Embeddings** | `BEDROCK_EMBEDDING_MODEL_ID` | Titan Embed Text v1 | Hybrid-search vectors — on by default; set empty to disable |
+| **Ingest Planner** | `MODEL_INGEST_PLAN` | inherits `MODEL_DEFAULT` | Reads documents, builds page plans, plan chat |
+| **Ingest Writer** | `MODEL_INGEST_WRITE` | inherits `MODEL_DEFAULT` | Renders individual wiki pages from a planned spec (single-shot) |
+| **Query / Chat** | `MODEL_QUERY` | inherits `MODEL_DEFAULT` | Answers questions, streaming chat |
+| **Recalibrate** | `MODEL_RECALIBRATE` | inherits `MODEL_DEFAULT` | Deep analysis and full-wiki rewriting |
+| **Draft Agent** | `MODEL_DRAFT_AGENT` | inherits `MODEL_DEFAULT` | Conversational AI Writer — multi-turn drafting, Q&A, section revisions |
+| **Inline Editor** | `MODEL_EDIT` | inherits `MODEL_DEFAULT` | Inline AI page/section rewrites (single-shot) |
+| **Embeddings** | `MODEL_EMBEDDING` | *(empty)* | Optional hybrid-search vectors; disabled by default |
 
 ---
 
@@ -807,13 +1109,18 @@ All four require `can_view_wiki` and are strictly org-scoped to `target_kind='pa
 | `ASSUMED_ROLE_ARN` | *(empty)* | ARN to assume for cross-account Bedrock access |
 | `ASSUMED_ROLE_SESSION_NAME` | `WikiAgentSession` | STS session name when assuming a role |
 | `ASSUMED_ROLE_DURATION` | `3600` | STS assumed-role credential lifetime (seconds) |
-| `BEDROCK_INGEST_MODEL_ID` | Claude Haiku 4.5 | Ingest planner model |
-| `BEDROCK_INGEST_WRITER_MODEL_ID` | Llama 4 Maverick | Ingest page-renderer model (was `BEDROCK_WRITER_MODEL_ID`; old name still accepted) |
-| `BEDROCK_QUERY_MODEL_ID` | Claude Haiku 4.5 | Query/chat model |
-| `BEDROCK_RECALIBRATE_MODEL_ID` | Claude Sonnet 4.5 | Recalibration model |
-| `BEDROCK_DRAFT_AGENT_MODEL_ID` | Claude Haiku 4.5 | Conversational AI Writer agent model |
-| `BEDROCK_EDIT_MODEL_ID` | Claude Sonnet 4.5 | Inline AI editor model (page/section rewrites) |
-| `BEDROCK_EMBEDDING_MODEL_ID` | `amazon.titan-embed-text-v1` | Embedding model for hybrid search; **empty disables** vector search |
+| `LLM_PROVIDER` | `bedrock` | Registered adapter: bedrock, anthropic or openai |
+| `LLM_API_KEY` | *(empty)* | Shared secret for direct API adapters; not used by Bedrock |
+| `LLM_BASE_URL` | *(empty)* | Trusted direct API endpoint override; empty uses the provider's official endpoint; ignored by Bedrock |
+| `MODEL_DEFAULT` | `haiku45` | Friendly model name inherited by all omitted text roles |
+| `BEDROCK_INFERENCE_GEO` | `us` | Catalogue-supported profile geography; blank selects the foundation ID |
+| `MODEL_INGEST_PLAN` | inherits `MODEL_DEFAULT` | Ingest planner model |
+| `MODEL_INGEST_WRITE` | inherits `MODEL_DEFAULT` | Ingest page-renderer model |
+| `MODEL_QUERY` | inherits `MODEL_DEFAULT` | Query/chat model |
+| `MODEL_RECALIBRATE` | inherits `MODEL_DEFAULT` | Recalibration model |
+| `MODEL_DRAFT_AGENT` | inherits `MODEL_DEFAULT` | Conversational AI Writer agent model |
+| `MODEL_EDIT` | inherits `MODEL_DEFAULT` | Inline AI editor model (page/section rewrites) |
+| `MODEL_EMBEDDING` | *(empty)* | Embedding model for hybrid search; **empty disables** vector search |
 | `EMBEDDING_DIMENSIONS` | `1536` | Vector dimensions for the embedding model |
 | `BEDROCK_SSL_VERIFY` | `true` | Verify TLS on Bedrock clients; set `false` behind a TLS-intercepting proxy |
 | `APP_TITLE` | `AI Knowledge Hub` | Browser tab title |
@@ -1044,7 +1351,11 @@ pytest tests/unit -v
 | `test_wiki_engine.py` | `_parse_json`, `_find_relevant_pages`, `_maybe_summarize`, `lint`, `query`, `chat`, `chat_stream`, `plan_chat`, helper methods |
 | `test_wiki_db.py` | `get_compact_index`, `semantic_search_wiki`, `get_rendered_log` |
 | `test_semantic_search.py` | Embeddings service, hybrid/BM25 search, paginated listing, wiki links, Louvain clusters |
-| `test_bedrock.py` | `converse`, `converse_stream`, credential rotation |
+| `test_provider_bedrock.py` | `converse`, `converse_stream`, credential rotation, embedding payload shaping |
+| `test_model.py` | role → name → ID resolution, startup validation, chat/converse factories, embedding fallback, provider registry |
+| `test_model_catalog.py` | central name/provider resolution, metadata validation, capability checks and no raw-ID bypass |
+| `test_config_model_vars.py` | shared defaults, explicit overrides and obsolete-setting rejection |
+| `test_no_direct_llm_clients.py` | architecture guard — no LLM client constructed outside `app/providers/` |
 | `test_aws_auth.py` | Static creds, STS role assumption, expiry buffer, cache, refresh loop, start/stop task |
 | `test_s3.py` | Local filesystem backend (read, write, delete, exists, list, size, `ensure_bucket`) and S3 backend with mocked boto3 |
 | `test_ingest_agent.py` | `_parse_json`, `_split_chunks`, `_extract_text` (txt/md/fallback), `_base_state` |
@@ -1078,7 +1389,7 @@ All LLM, AWS, and database calls are mocked — no credentials or running servic
 pytest tests/integration -v
 ```
 
-Uses **testcontainers** to spin up a throwaway PostgreSQL 16 container and applies Alembic migrations automatically. Docker must be running. **324 tests** across 21 modules exercise the full HTTP API surface:
+Uses **testcontainers** to spin up a throwaway PostgreSQL 16 container with pgvector (`pgvector/pgvector:pg16`) and applies Alembic migrations automatically. Docker must be running. CI uses the same image for its integration database. Hybrid-search tests require the embedding column and fail if it is missing rather than skipping. If `DATABASE_URL` is explicitly set, it must point to a disposable test database with pgvector available: the fixtures clear its tables. The suite exercises the full HTTP API surface:
 
 - `test_routes_auth.py` — login, logout, JWT refresh, 401 flows, `/health`
 - `test_routes_wiki.py` — wiki tree, full-text search, page CRUD
@@ -1148,7 +1459,7 @@ pytest tests/unit --cov=app/services --cov=app/routes --cov-report=term-missing
 | `app/services/wiki_state.py` · `jobs.py` | 93% |
 | `app/services/wiki_health.py` · `notif_stream.py` · `writer_stream.py` | 91–92% |
 | `app/services/wiki_import.py` | 87% |
-| `app/services/bedrock.py` · `wiki_db.py` | 83% |
+| `app/providers/bedrock.py` · `wiki_db.py` | 83% |
 | `app/services/wiki_engine.py` | 78% |
 | `app/services/ingest_queue.py` | 76% |
 | `app/services/s3.py` | 68% |
