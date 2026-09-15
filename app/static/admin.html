@@ -4,25 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin Dashboard — AI Knowledge Hub</title>
-  <meta name="theme-color" content="#005CE7" />
+  <meta name="theme-color" content="#f7f8fc" />
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+  <script src="/static/solar.js"></script>
+  <script src="/static/theme.js"></script>
+  <link rel="stylesheet" href="/static/prism.css">
   <style>
-    :root {
-      --bg: #0f1117;
-      --surface: #1a1d27;
-      --surface2: #222536;
-      --border: #2e3248;
-      --text: #e2e8f0;
-      --text-muted: #8892a4;
-      --accent: #6c63ff;
-      --accent-hover: #7c73ff;
-      --danger: #e05252;
-      --success: #4caf50;
-      --warning: #f59e0b;
-      --radius: 8px;
-    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    body { font-family: var(--font);
            background: var(--bg); color: var(--text); min-height: 100vh; }
 
     /* ── Header ── */
@@ -107,12 +97,12 @@
     .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px;
            border-radius: 6px; font-size: 0.85rem; font-weight: 500; cursor: pointer;
            border: none; transition: background 0.15s; }
-    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary { background: var(--accent); color: var(--on-primary); }
     .btn-primary:hover { background: var(--accent-hover); }
     .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
     .btn-secondary:hover { background: var(--border); }
-    .btn-danger { background: var(--danger); color: #fff; }
-    .btn-danger:hover { background: #c94545; }
+    .btn-danger { background: var(--danger); color: var(--on-danger); }
+    .btn-danger:hover { filter: brightness(0.92); }
     .btn-sm { padding: 4px 10px; font-size: 0.8rem; }
 
     /* ── Badges ── */
@@ -219,6 +209,8 @@
     .perm-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
     @media (max-width: 640px) {
       .form-grid { grid-template-columns: 1fr; }
+      .field.span2, .section-label { grid-column: auto; }
+      .modal-actions { flex-wrap: wrap; }
       .perm-grid { grid-template-columns: 1fr; }
       .modal { min-width: unset; }
     }
@@ -261,8 +253,8 @@
     .schema-preview-body th { background: var(--surface2); font-weight: 600; }
     .schema-preview-body blockquote { border-left: 3px solid var(--accent); margin: 0.6em 0; padding: 6px 14px; color: var(--text-muted); }
     .diff-line { padding: 1px 16px; white-space: pre-wrap; word-break: break-all; }
-    .diff-line.added   { background: rgba(76,175,80,0.12); color: #81c784; }
-    .diff-line.removed { background: rgba(224,82,82,0.12); color: #e57373; }
+    .diff-line.added   { background: rgba(76,175,80,0.12); color: var(--success); }
+    .diff-line.removed { background: rgba(224,82,82,0.12); color: var(--danger); }
     .diff-line.context { color: var(--text-muted); }
     .diff-line.hunk    { color: var(--accent); background: rgba(108,99,255,0.08); padding: 3px 16px; font-style: italic; }
     .schema-footer { display: flex; align-items: center; justify-content: space-between; padding: 12px 0 0; flex-wrap: wrap; gap: 8px; }
@@ -287,6 +279,43 @@
     #schema-rules-list ul { margin: 0; padding-left: 18px; }
     #schema-rules-list li { font-size: 0.84rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 6px; }
     #schema-rules-list code { background: var(--surface2); border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; font-size: 0.8rem; color: var(--text); white-space: nowrap; }
+    /* Prism admin surfaces share tokens with the wiki, including automatic mode. */
+    .header { min-height: 64px; gap: 14px; flex-wrap: wrap; }
+    .header-logo { width: 30px; height: 30px; flex: none; }
+    .header h1 { letter-spacing: -0.4px; }
+    .tabs { background: var(--navy); overflow-x: auto; }
+    .tab { flex: none; padding: 16px; }
+    .tab.active { background: var(--navy-active); color: var(--navy-active-text); }
+    .main { padding: 28px; }
+    .card { border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); }
+    .card-header { padding: 20px 24px; }
+    .card-header h2 { font-size: 1.15rem; letter-spacing: -0.3px; }
+    th { background: var(--surface2); }
+    td { padding: 14px 16px; }
+    .modal { border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
+    .modal-backdrop { background: var(--scrim); backdrop-filter: blur(4px); }
+    .modal h3 { font-size: 1.3rem; letter-spacing: -0.5px; }
+    .field:has(> strong) { display: block; line-height: 1.6; }
+    .btn, .btn-sm { border-radius: 8px; }
+    .badge-member { background: var(--surface2); color: var(--text-secondary); }
+    .badge-admin, .adm-umi-badge { background: var(--ai-bg); color: var(--ai); }
+    .stat-card { border-top: 3px solid var(--primary); }
+    .stat-card:nth-child(4n+2) { border-top-color: var(--ai); }
+    .stat-card:nth-child(4n+3) { border-top-color: var(--teal); }
+    .stat-card:nth-child(4n+4) { border-top-color: var(--warm); }
+    .adm-user-dropdown { box-shadow: var(--shadow-lg); }
+    input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+    #users-table, #orgs-table, #templates-table, #workspaces-table, #jobs-table, #audit-table, #history-table { overflow-x: auto; }
+    @media (max-width: 760px) {
+      .header { padding: 14px; gap: 10px; }
+      .header h1 { font-size: 1rem; }
+      .header .spacer { display: none; }
+      .tabs { padding: 0 8px; }
+      .main { padding: 14px; }
+      .card-header { padding: 16px; gap: 10px; flex-wrap: wrap; }
+      .modal { min-width: 0; width: calc(100vw - 24px); padding: 20px; }
+      .form-grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
@@ -295,10 +324,12 @@
     <svg viewBox="0 0 16 16" fill="none" style="width:14px;height:14px"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
     Wiki
   </a>
+  <img class="header-logo" src="/static/favicon.svg" alt="" aria-hidden="true">
   <h1 id="hdr-title">Admin Dashboard</h1>
   <div class="spacer"></div>
   <select id="adm-org-switcher" class="schema-org-select" style="display:none;margin-right:12px"
           title="Active organization"></select>
+  <button type="button" class="prism-theme-trigger" data-appearance-open aria-label="Appearance" aria-haspopup="dialog"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="6.5" stroke="currentColor" stroke-width="1.5"/><path d="M10 3.5a6.5 6.5 0 0 1 0 13z" fill="currentColor"/></svg></button>
   <div class="adm-user-wrap">
     <button class="adm-user-btn" id="adm-user-btn" title="Account">
       <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">

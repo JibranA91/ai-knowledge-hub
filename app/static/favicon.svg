@@ -1,18 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="AI Knowledge Hub logo">
-  <rect width="64" height="64" rx="14" fill="#005CE7"/>
-  <g stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" opacity="0.8">
-    <line x1="19" y1="19" x2="45" y2="17"/>
-    <line x1="45" y1="17" x2="49" y2="41"/>
-    <line x1="49" y1="41" x2="29" y2="51"/>
-    <line x1="29" y1="51" x2="15" y2="39"/>
-    <line x1="15" y1="39" x2="19" y2="19"/>
-    <line x1="19" y1="19" x2="49" y2="41"/>
-  </g>
-  <g fill="#ffffff">
-    <circle cx="19" cy="19" r="3.6"/>
-    <circle cx="45" cy="17" r="2.8"/>
-    <circle cx="49" cy="41" r="3.6"/>
-    <circle cx="29" cy="51" r="2.8"/>
-    <circle cx="15" cy="39" r="2.8"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="AI Knowledge Hub">
+  <rect width="64" height="64" rx="18" fill="#252a3d"/>
+  <path d="M32 11 53 47H11Z" fill="#65dcca"/>
+  <path d="m32 11 3 23-24 13Z" fill="#a0b5ff"/>
+  <path d="m32 11 21 36-18-13Z" fill="#c8acfa"/>
+  <path d="m11 47 24-13 18 13Z" fill="#65dcca"/>
+  <path d="m35 34 6 13H29Z" fill="#f7ae88"/>
 </svg>

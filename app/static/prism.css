@@ -1,0 +1,190 @@
+/* Prism's shared palette. Components in both pages use the same semantic tokens. */
+:root {
+  color-scheme: light;
+  --bg: #f7f8fc;
+  --surface: #ffffff;
+  --surface2: #f0f2f8;
+  --bg-elev: var(--surface);
+  --text: #252a3d;
+  --text-secondary: #505a73;
+  --text-muted: #657089;
+  --border: #dfe3ef;
+  --border-strong: #b9c2d9;
+  --hover: #e9edf7;
+  --primary: #365acb;
+  --primary-hover: #2945a6;
+  --primary-light: #e8eeff;
+  --primary-muted: #f0f3ff;
+  --on-primary: #ffffff;
+  --teal: #087f82;
+  --teal-hover: #066568;
+  --teal-bg: #e2f5f3;
+  --on-teal: #ffffff;
+  --accent: var(--primary);
+  --accent-hover: var(--primary-hover);
+  --ai: #7447c5;
+  --ai-bg: #f1eaff;
+  --warm: #ad4934;
+  --warm-bg: #fff0e9;
+  --success: #257149;
+  --success-bg: #e5f4e9;
+  --danger: #b53745;
+  --danger-bg: #ffedef;
+  --warning: #89600b;
+  --warning-bg: #fff3d7;
+  --info: #286d9f;
+  --info-bg: #e6f2fc;
+  --on-danger: #ffffff;
+  --scrim: rgba(23, 27, 43, 0.55);
+  --prism-spectrum: linear-gradient(100deg, var(--primary), var(--ai) 36%, var(--warm) 68%, var(--teal));
+
+  /* Existing sidebar names stay aliases; no component needs its own palette. */
+  --navy: #f0f2fa;
+  --navy-mid: #e9edf8;
+  --navy-light: #e0e6f5;
+  --navy-text: var(--text-muted);
+  --navy-text-bright: var(--text);
+  --navy-hover: #e4e9f8;
+  --navy-active: #dfe7ff;
+  --navy-active-text: #304fad;
+  --navy-border: #d9e0f0;
+  --navy-card: var(--surface);
+  --navy-card-hover: var(--hover);
+  --navy-card-border: var(--border);
+  --accent-upload: var(--teal);
+  --accent-health: var(--success);
+  --accent-recalib: var(--ai);
+  --accent-system: var(--warning);
+  --accent-query: var(--info);
+  --accent-error: var(--danger);
+  --panel-bg: var(--surface);
+  --panel-border: var(--border-strong);
+  --panel-card: var(--bg);
+  --panel-card-hover: var(--hover);
+  --panel-card-border-c: var(--border);
+  --panel-divider: var(--border);
+  --panel-text-hi: var(--text);
+  --panel-text-lo: var(--text-secondary);
+  --panel-hover: var(--hover);
+  --panel-muted-bg: var(--surface2);
+  --panel-pill-bg: var(--primary-light);
+  --panel-pill-text: var(--primary);
+  --panel-btn-border: var(--border-strong);
+  --panel-btn-border-hover: var(--primary);
+  --panel-track: var(--border);
+  --panel-step-base: var(--border-strong);
+  --panel-step-sep: var(--border);
+  --panel-shadow: var(--shadow-lg);
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 18px;
+  --shadow-xs: 0 1px 2px rgba(37, 42, 61, 0.04);
+  --shadow-sm: 0 2px 6px rgba(37, 42, 61, 0.06);
+  --shadow: 0 6px 24px rgba(37, 42, 61, 0.08);
+  --shadow-lg: 0 20px 64px rgba(37, 42, 61, 0.18);
+  --font: 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'Cascadia Code', 'Consolas', monospace;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration: 160ms;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #161924;
+  --surface: #1f2332;
+  --surface2: #272d40;
+  --text: #edf0fb;
+  --text-secondary: #c5cde4;
+  --text-muted: #acb7d2;
+  --border: #373f58;
+  --border-strong: #566384;
+  --hover: #30384e;
+  --primary: #a0b5ff;
+  --primary-hover: #bfceff;
+  --primary-light: #2b3657;
+  --primary-muted: #262f49;
+  --on-primary: #1b2441;
+  --teal: #65dccc;
+  --teal-hover: #92eadf;
+  --teal-bg: #203d3b;
+  --on-teal: #132d2b;
+  --ai: #c9aeff;
+  --ai-bg: #372b4c;
+  --warm: #ffb19d;
+  --warm-bg: #402c2b;
+  --success: #8bd7aa;
+  --success-bg: #1b3f2c;
+  --danger: #ffabb4;
+  --danger-bg: #482a32;
+  --warning: #f1cd80;
+  --warning-bg: #3e3621;
+  --info: #9acff2;
+  --info-bg: #243d4c;
+  --on-danger: #35151c;
+  --scrim: rgba(10, 12, 22, 0.7);
+  --navy: #1b1f2f;
+  --navy-mid: #252b40;
+  --navy-light: #30394f;
+  --navy-hover: #2b334b;
+  --navy-active: #303d61;
+  --navy-active-text: #bfceff;
+  --navy-border: #343c53;
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.18);
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.2);
+  --shadow: 0 6px 24px rgba(0, 0, 0, 0.24);
+  --shadow-lg: 0 20px 64px rgba(0, 0, 0, 0.38);
+}
+
+::selection { background: var(--primary-light); color: var(--text); }
+/* A slim spectrum ties the otherwise neutral wiki and admin surfaces together. */
+#app-root > header, body > .header {
+  background-image: var(--prism-spectrum);
+  background-size: 100% 3px;
+  background-repeat: no-repeat;
+}
+:where(button, a, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
+/* Appearance is available before login and uses no application/auth state. */
+.prism-theme-trigger {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  min-width: 34px; min-height: 34px; padding: 6px 9px;
+  font: inherit; font-size: 12px; color: var(--text-secondary);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  cursor: pointer;
+}
+.prism-theme-trigger:hover { background: var(--hover); color: var(--text); }
+.prism-theme-trigger svg { width: 17px; height: 17px; flex: none; }
+.prism-login-theme { position: absolute; top: 22px; right: 24px; }
+.prism-appearance {
+  box-sizing: border-box; margin: auto; padding: 26px; width: 420px;
+  max-width: calc(100vw - 28px); max-height: calc(100dvh - 32px); overflow: auto;
+  color: var(--text); background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); font: 14px var(--font);
+}
+.prism-appearance::backdrop { background: var(--scrim); backdrop-filter: blur(4px); }
+.prism-appearance h2 { font-size: 22px; font-weight: 650; margin: 0 0 8px; letter-spacing: -0.5px; }
+.prism-appearance p { line-height: 1.6; margin: 0 0 18px; color: var(--text-muted); }
+.prism-appearance label { display: block; font-weight: 600; margin: 14px 0 6px; }
+.prism-appearance input, .prism-appearance select {
+  box-sizing: border-box; width: 100%; padding: 10px; font: inherit;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border-strong); border-radius: 8px;
+}
+.prism-appearance fieldset { border: 0; margin: 18px 0 0; padding: 0; min-width: 0; }
+.prism-appearance legend { font-weight: 650; }
+.prism-appearance .prism-location-fields { display: flex; gap: 12px; }
+.prism-location-fields > div { flex: 1; min-width: 0; }
+.prism-appearance .prism-theme-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0; }
+.prism-appearance button { font: inherit; cursor: pointer; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); }
+.prism-appearance button:hover { background: var(--hover); }
+.prism-appearance button:disabled { opacity: 0.6; cursor: wait; }
+.prism-appearance #prism-theme-close { background: var(--primary); color: var(--on-primary); border-color: transparent; width: 100%; }
+.prism-appearance #prism-theme-status { font-size: 12px; margin: 16px 0; }
+.prism-appearance #prism-location-message { font-size: 12px; color: var(--text-secondary); }
+.prism-appearance .prism-privacy { font-size: 12px; margin-top: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

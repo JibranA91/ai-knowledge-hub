@@ -12,6 +12,34 @@ AI Knowledge Hub is an AI-maintained internal wiki. Unlike a traditional documen
 - **Model access:** an AWS account with Bedrock access, a direct Anthropic API key, or an OpenAI API key. Select `LLM_PROVIDER=bedrock`, `anthropic`, or `openai`; see [Anthropic setup](#direct-anthropic-setup) and [OpenAI setup](#direct-openai-setup). Other providers are not implemented.
 - **Optional:** an AWS S3 bucket — only if you set `STORAGE_BACKEND=s3`. The default `local` backend stores raw uploads on a Docker volume and needs no S3.
 
+## Appearance
+
+Prism provides coordinated light and dark appearances for the wiki, login,
+admin dashboard, graph, and dialogs. Neutral pearl/slate surfaces balance blue
+navigation and primary actions, teal uploads, violet AI tools, and coral
+highlights. Status colors retain their usual meanings.
+
+Open **Appearance** in the header (also available before signing in):
+
+- **Automatic** is the default. Save your city's latitude/longitude, or choose
+  **Use device location**, to switch to light at sunrise and dark at sunset.
+  The calculation runs locally, checks every minute, and rechecks when returning
+  to the page. It handles seasons, daylight-saving changes, and polar day/night.
+- Until a location is saved, Automatic follows the device's light/dark setting;
+  the appearance dialog explicitly shows this fallback. No location is requested
+  automatically. Device location needs HTTPS or localhost; manually entered
+  coordinates also work on a plain-HTTP home/workplace network.
+- **Light** and **Dark** override automatic switching. The choice and optional
+  location stay in this browser, synchronize across its open app tabs, and apply
+  to the admin dashboard too. **Forget location** removes the saved coordinates.
+  If browser storage is blocked, choices last for the current page only.
+
+Device coordinates are rounded to city-level precision. The application does
+not transmit coordinates or use an external sunrise API. Sunrise is an
+astronomical approximation, not a measurement of local weather, terrain, or
+room brightness. Calculations use the bundled [SunCalc sun-position formulas](https://github.com/mourner/suncalc/tree/v1.9.0)
+under the BSD-2-Clause license (included with the static assets).
+
 ---
 
 ## High-Level Architecture

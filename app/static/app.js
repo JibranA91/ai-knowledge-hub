@@ -1379,10 +1379,6 @@ function initNotifPanel() {
     else if (action === 'retry')      notifRetryUpload(id);
     else if (action === 'dismiss')    notifDismissItem(id);
   });
-  document.getElementById('btn-theme').addEventListener('click', () => {
-    const isDark = document.documentElement.dataset.theme === 'dark';
-    document.documentElement.dataset.theme = isDark ? 'light' : 'dark';
-  });
   notifRender();
 }
 
