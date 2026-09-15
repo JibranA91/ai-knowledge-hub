@@ -4,11 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Knowledge Hub</title>
-  <meta name="theme-color" content="#005CE7">
+  <meta name="theme-color" content="#f7f8fc">
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="/static/solar.js"></script>
+  <script src="/static/theme.js"></script>
+  <link rel="stylesheet" href="/static/prism.css">
   <link rel="stylesheet" href="/static/style.css">
   <link rel="stylesheet" href="/static/vendor/katex/katex.min.css">
   <link rel="stylesheet" href="/static/markdown-math.css">
@@ -21,6 +21,7 @@
 
 <!-- Login Screen -->
 <div id="login-screen">
+  <button type="button" class="prism-theme-trigger prism-login-theme" data-appearance-open aria-haspopup="dialog"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="6.5" stroke="currentColor" stroke-width="1.5"/><path d="M10 3.5a6.5 6.5 0 0 1 0 13z" fill="currentColor"/></svg> Appearance</button>
   <div class="login-card">
     <div class="login-logo">
       <img src="/static/favicon.svg" alt="" class="app-logo" aria-hidden="true">
@@ -28,6 +29,7 @@
       <span class="brand-sep"></span>
       <span class="brand-product">AI Knowledge Hub</span>
     </div>
+    <div class="login-intro"><h1>Welcome to your knowledge.</h1><p>A shared space for your documents, ideas, and discoveries.</p></div>
     <form id="login-form" autocomplete="on">
       <div class="login-field">
         <label for="login-username">Username</label>
@@ -103,15 +105,7 @@
       <svg viewBox="0 0 16 16" fill="none"><path d="M8 10V3M5 6l3-3 3 3M3 13h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Upload
     </button>
-    <button id="btn-theme" class="btn-theme" title="Toggle dark/light mode">
-      <svg class="icon-moon" viewBox="0 0 16 16" fill="none">
-        <path d="M13.5 10A6 6 0 0 1 6 2.5a6 6 0 1 0 7.5 7.5z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-      <svg class="icon-sun" viewBox="0 0 16 16" fill="none">
-        <circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.4"/>
-        <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.1 3.1l1.4 1.4M11.5 11.5l1.4 1.4M3.1 12.9l1.4-1.4M11.5 4.5l1.4-1.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
-      </svg>
-    </button>
+    <button id="btn-theme" class="prism-theme-trigger" type="button" data-appearance-open aria-label="Appearance" aria-haspopup="dialog"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="6.5" stroke="currentColor" stroke-width="1.5"/><path d="M10 3.5a6.5 6.5 0 0 1 0 13z" fill="currentColor"/></svg></button>
     <div class="bell-wrap">
       <button class="btn-bell" id="btn-bell" title="Notifications">
         <svg viewBox="0 0 18 18" fill="none">
@@ -667,7 +661,7 @@
     </div>
     <div class="modal-body graph-modal-body">
       <iframe id="graph-frame" class="graph-frame" sandbox="allow-scripts"
-        srcdoc="<html><body style='background:#060E1A;margin:0'></body></html>"></iframe>
+        srcdoc="<html><body style='margin:0'></body></html>"></iframe>
       <div id="graph-overlay" class="graph-overlay">
         <span class="spinner"></span>
         <span id="graph-overlay-msg">Building graph…</span>

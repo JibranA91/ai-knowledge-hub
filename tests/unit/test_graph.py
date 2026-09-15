@@ -360,6 +360,8 @@ def test_generate_html_empty_graph_returns_placeholder():
     g = _make_graph()
     html = g.generate_html()
     assert "No wiki pages" in html
+    assert '/static/prism.css' in html
+    assert '/static/graph-theme.js' in html
 
 
 def test_generate_html_with_nodes_returns_html():
@@ -372,6 +374,9 @@ def test_generate_html_with_nodes_returns_html():
     )
     html = g.generate_html()
     assert "<html" in html.lower() or "body" in html.lower()
+    assert 'var(--bg)' in html
+    assert 'window.applyPrismGraphTheme' in html
+    assert 'graphNavigate' in html  # the existing click-to-open contract is unchanged
 
 
 # ── update_pages ──────────────────────────────────────────────────────────

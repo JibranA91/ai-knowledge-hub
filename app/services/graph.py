@@ -305,11 +305,15 @@ class WikiGraph:
         return {'nodes': nodes, 'edges': edges}
 
     def generate_html(self) -> str:
+        theme_assets = (
+            '<link rel="stylesheet" href="/static/prism.css">'
+            '<script src="/static/graph-theme.js"></script>'
+        )
         try:
             from pyvis.network import Network  # type: ignore
         except Exception as _import_err:
             return (
-                '<body style="background:#060E1A;color:#FF8080;font-family:sans-serif;'
+                theme_assets + '<body style="background:var(--bg);color:var(--danger);font-family:sans-serif;'
                 'display:flex;align-items:center;justify-content:center;height:100vh;margin:0;padding:24px">'
                 f'Import error: {_import_err}</body>'
             )
@@ -317,7 +321,7 @@ class WikiGraph:
         data = self.as_dict()
         if not data['nodes']:
             return (
-                '<html><body style="background:#060E1A;color:#7A94B0;font-family:Inter,sans-serif;'
+                '<html><head>' + theme_assets + '</head><body style="background:var(--bg);color:var(--text-muted);font-family:system-ui,sans-serif;'
                 'display:flex;align-items:center;justify-content:center;height:100vh;margin:0">'
                 'No wiki pages indexed yet.</body></html>'
             )
@@ -407,25 +411,25 @@ class WikiGraph:
   }
 }""")
 
-        html = net.generate_html(notebook=False)
+        html = net.generate_html(notebook=False).replace('<head>', '<head>' + theme_assets)
 
         inject = """
 <style>
   html, body {
     margin: 0 !important; padding: 0 !important;
     width: 100vw !important; height: 100vh !important;
-    overflow: hidden !important; background: #060E1A !important;
+    overflow: hidden !important; background: var(--bg) !important;
   }
   #mynetwork {
     position: fixed !important; top: 0 !important; left: 0 !important;
     width: 100vw !important; height: 100vh !important;
     border: none !important; outline: none !important;
-    background-color: #060E1A !important;
+    background-color: var(--bg) !important;
     margin: 0 !important; padding: 0 !important; float: none !important;
   }
   div.vis-tooltip {
-    background: #0D1E30 !important; border: 1px solid #243E5A !important;
-    color: #C2D4E8 !important; border-radius: 8px !important;
+    background: var(--surface) !important; border: 1px solid var(--border) !important;
+    color: var(--text) !important; border-radius: 10px !important;
     padding: 10px 14px !important;
     font-family: Inter, 'Segoe UI', sans-serif !important;
     font-size: 12px !important; line-height: 1.7 !important;
@@ -436,6 +440,7 @@ class WikiGraph:
 <script>
   (function poll() {
     if (typeof network !== 'undefined') {
+      if (window.applyPrismGraphTheme) window.applyPrismGraphTheme();
       function fitWhenReady() {
         var mn = document.getElementById('mynetwork');
         if (mn && mn.offsetWidth > 100) {
